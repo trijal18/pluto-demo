@@ -80,7 +80,7 @@ The server will start on `http://localhost:8000` by default. Open this URL in yo
 6. **Land and Disarm**: Use "Land" and "Disarm" buttons to safely conclude flight
 
 ### Gesture Control
-
+<!-- 
 #### ASL Gesture Control
 
 Run the ASL gesture recognition script:
@@ -97,7 +97,7 @@ python gestures/gesture_asl.py
 - `Left` → Move Left
 - `Right` → Move Right
 - `Fist` → Move Forward
-- `Palm` → Move Backward
+- `Palm` → Move Backward -->
 
 #### Numeric Gesture Control
 
@@ -234,7 +234,7 @@ See `requirements.txt` for the complete list of dependencies.
 - Built with [FastAPI](https://fastapi.tiangolo.com/)
 - Gesture recognition powered by [Ultralytics YOLO](https://ultralytics.com/)
 - Charts powered by [Chart.js](https://www.chartjs.org/)
-- Drone control via [plutocontrol](https://github.com/dronsetti/PlutoX)
+- Drone control via [plutocontrol](https://github.com/DronaAviation/plutocontrol)
 
 
 
