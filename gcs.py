@@ -6,7 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 import asyncio
 import signal
 import sys
-from plutocontrol import pluto  # your drone control class
+from plutocontrol import pluto  # drone control class
 
 app = FastAPI()
 dr = pluto()
