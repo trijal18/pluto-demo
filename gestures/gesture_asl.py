@@ -3,12 +3,12 @@ import requests
 import time
 import logging
 
-# 🔧 Config
+# Config
 GCS_BASE = "http://127.0.0.1:8000"   # change if running on different host
 COOLDOWN_SECONDS = 3
 MODEL_PATH = r"models/best_5.pt"
 
-# Gesture → endpoint mapping (MUST match your existing GCS endpoints)
+# Gesture → endpoint mapping (MUST match existing GCS endpoints)
 gesture_to_endpoint = {
     "V": "arm",
     "W": "disarm",

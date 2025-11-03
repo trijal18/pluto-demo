@@ -5,10 +5,10 @@ import logging
 import os
 
 # === CONFIG ===
-MODEL_PATH = "models/numeric.pt"
-GCS_BASE_URL = "http://127.0.0.1:8000"
-COOLDOWN_SECONDS = 3
-LOG_FILE = "gesture.log"
+MODEL_PATH = "models/numeric.pt" 
+GCS_BASE_URL = "http://127.0.0.1:8000" #change url if required
+COOLDOWN_SECONDS = 3 
+LOG_FILE = "gesture.log" 
 
 gesture_to_command = {
     "1": "arm",
@@ -22,8 +22,8 @@ logging.basicConfig(
     level=logging.INFO,
     format="[%(asctime)s] %(levelname)s: %(message)s",
     handlers=[
-        logging.FileHandler(LOG_FILE, mode='a'),  # Append mode
-        logging.StreamHandler()                   # Also log to console
+        logging.FileHandler(LOG_FILE, mode='a'),  
+        logging.StreamHandler()                   
     ]
 )
 
