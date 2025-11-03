@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Drone Ground Control Station</title>
+  <link rel="stylesheet" href="/static/styles.css" />
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.9.1/chart.min.js"></script>
+</head>
+<body>
+  <div class="container">
+    <h1>Pluto Ground Control Station</h1>
+
+    <div class="connection-status">
+      <span class="status-indicator" id="statusIndicator"></span>
+      <span id="connectionStatus">Disconnected</span>
+    </div>
+
+    <div class="dashboard">
+      <div class="panel">
+        <h2>Flight Controls</h2>
+        <div class="controls">
+          <div class="control-group">
+            <h3>Connection</h3>
+            <button class="btn-primary" onclick="sendCommand('connect')">Connect</button>
+            <button class="btn-danger" onclick="sendCommand('disconnect')">Disconnect</button>
+          </div>
+          <div class="control-group">
+            <h3>Arming</h3>
+            <button class="btn-warning" onclick="sendCommand('arm')">Arm</button>
+            <button class="btn-info" onclick="sendCommand('disarm')">Disarm</button>
+          </div>
+          <div class="control-group">
+            <h3>Flight</h3>
+            <button class="btn-primary" onclick="sendCommand('takeoff')">Take Off</button>
+            <button class="btn-warning" onclick="sendCommand('land')">Land</button>
+          </div>
+          <div class="control-group">
+            <h3>Movement</h3>
+            <button class="btn-info" onclick="sendCommand('forward')">Forward</button>
+            <button class="btn-info" onclick="sendCommand('backward')">Backward</button>
+            <button class="btn-info" onclick="sendCommand('left')">Left</button>
+            <button class="btn-info" onclick="sendCommand('right')">Right</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <h2>Telemetry Data</h2>
+        <div class="telemetry-grid">
+          <div class="telemetry-item"><div class="telemetry-label">Roll</div><div class="telemetry-value" id="roll">-</div></div>
+          <div class="telemetry-item"><div class="telemetry-label">Pitch</div><div class="telemetry-value" id="pitch">-</div></div>
+          <div class="telemetry-item"><div class="telemetry-label">Yaw</div><div class="telemetry-value" id="yaw">-</div></div>
+          <div class="telemetry-item"><div class="telemetry-label">Altitude</div><div class="telemetry-value" id="height">-</div></div>
+          <div class="telemetry-item"><div class="telemetry-label">Battery</div><div class="telemetry-value" id="battery">-</div></div>
+          <div class="telemetry-item"><div class="telemetry-label">GPS Satellites</div><div class="telemetry-value" id="gps">-</div></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <h2>RC Channel Values</h2>
+      <div class="rc-channels">
+        <div class="rc-item"><div class="rc-label">Roll</div><div class="rc-value" id="rc0">-</div><div class="rc-bar"><div class="rc-fill" id="rcBar0"></div></div></div>
+        <div class="rc-item"><div class="rc-label">Pitch</div><div class="rc-value" id="rc1">-</div><div class="rc-bar"><div class="rc-fill" id="rcBar1"></div></div></div>
+        <div class="rc-item"><div class="rc-label">Throttle</div><div class="rc-value" id="rc2">-</div><div class="rc-bar"><div class="rc-fill" id="rcBar2"></div></div></div>
+        <div class="rc-item"><div class="rc-label">Yaw</div><div class="rc-value" id="rc3">-</div><div class="rc-bar"><div class="rc-fill" id="rcBar3"></div></div></div>
+        <div class="rc-item"><div class="rc-label">AUX1</div><div class="rc-value" id="rc4">-</div><div class="rc-bar"><div class="rc-fill" id="rcBar4"></div></div></div>
+        <div class="rc-item"><div class="rc-label">AUX2</div><div class="rc-value" id="rc5">-</div><div class="rc-bar"><div class="rc-fill" id="rcBar5"></div></div></div>
+        <div class="rc-item"><div class="rc-label">AUX3</div><div class="rc-value" id="rc6">-</div><div class="rc-bar"><div class="rc-fill" id="rcBar6"></div></div></div>
+        <div class="rc-item"><div class="rc-label">AUX4</div><div class="rc-value" id="rc7">-</div><div class="rc-bar"><div class="rc-fill" id="rcBar7"></div></div></div>
+      </div>
+    </div>
+
+    <div class="charts-section">
+      <h2 style="text-align: center; margin-bottom: 20px; color: #87ceeb;">Live Telemetry Charts</h2>
+      <div class="charts-grid">
+        <div class="chart-container"><div class="chart-title">Roll Angle (°)</div><canvas id="rollChart"></canvas></div>
+        <div class="chart-container"><div class="chart-title">Pitch Angle (°)</div><canvas id="pitchChart"></canvas></div>
+        <div class="chart-container"><div class="chart-title">Yaw Angle (°)</div><canvas id="yawChart"></canvas></div>
+        <div class="chart-container"><div class="chart-title">Altitude (cm)</div><canvas id="heightChart"></canvas></div>
+        <div class="chart-container"><div class="chart-title">Battery Voltage (V)</div><canvas id="batteryChart"></canvas></div>
+        <div class="chart-container"><div class="chart-title">Throttle</div><canvas id="throttleChart"></canvas></div>
+      </div>
+    </div>
+  </div>
+
+  <div id="notification-container"></div>
+  <script src="/static/script.js"></script>
+</body>
+</html>
