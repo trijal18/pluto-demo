@@ -126,4 +126,4 @@ signal.signal(signal.SIGTERM, handle_exit)  # kill / docker stop
 # --- Optional: local run helper ---
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run("web_gcs:app", host="0.0.0.0", port=8000, reload=True)
+    uvicorn.run("gcs:app", host="0.0.0.0", port=8000, reload=True)
