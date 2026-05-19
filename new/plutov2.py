@@ -15,6 +15,8 @@ MSP_ATTITUDE = 108
 MSP_ALTITUDE = 109
 MSP_ANALOG = 110
 MSP_SET_RAW_RC = 200
+MSP_ACC_CALIBRATION = 205
+MSP_ACC_TRIM = 240
 MSP_SET_COMMAND = 217
 
 # Pluto Command Types (for MSP_SET_COMMAND)
@@ -33,9 +35,9 @@ class PlutoV2:
         self.io_thread = None
         self.lock = threading.Lock()
         
-        # Target RC Values (1000-2000, 1500 is neutral)
-        # Order: Roll, Pitch, Throttle, Yaw, AUX1, AUX2, AUX3, AUX4
-        self.target_rc = [1500, 1500, 1500, 1500, 1500, 1000, 1500, 1000]
+        # Target RC Values (1000-2000)
+        # 1500 is neutral for R,P,Y. 1000 is min for Throttle.
+        self.target_rc = [1500, 1500, 1000, 1500, 1500, 1000, 1500, 1000]
         self.target_command = CMD_NONE
         
         # Shadow State (Telemetry)
@@ -47,12 +49,14 @@ class PlutoV2:
             'battery': 0.0,
             'rssi': 0,
             'rc': [1500] * 8,
+            'acc': [0, 0, 0],
+            'gyro': [0, 0, 0],
             'last_update': 0
         }
         
         # Watchdog
         self.last_input_time = time.time()
-        self.watchdog_timeout = 0.2  # 200ms
+        self.watchdog_timeout = 0.5  # Increased to 500ms for safety
         
         # Telemetry Health
         self.telemetry_lost = False
@@ -77,6 +81,9 @@ class PlutoV2:
             
             self.connected = True
             self.logger.info(f"Connected to Pluto at {self.ip}:{self.port}")
+            
+            # Send the initial trim packet as seen in original lib
+            self.client.sendall(self._create_packet(MSP_ACC_TRIM, b''))
             
             self.io_thread = threading.Thread(target=self._io_loop, daemon=True)
             self.io_thread.start()
@@ -122,18 +129,33 @@ class PlutoV2:
             self.target_command = cmd_type
 
     def arm(self):
-        """Arms the drone safely at zero throttle."""
+        """Arms the drone."""
         self.logger.info("Arming...")
+        # Pluto original lib: rcThrottle=1000, rcAUX4=1500
         self.set_rc(throttle=1000, aux4=1500)
 
     def disarm(self):
         """Disarms the drone."""
         self.logger.info("Disarming...")
-        self.set_rc(throttle=1000, aux4=1200)
+        # Pluto original lib: rcThrottle=1300, rcAUX4=1200
+        self.set_rc(throttle=1300, aux4=1200)
+
+    def calibrate_acc(self):
+        """Sends the accelerometer calibration command."""
+        self.logger.info("Calibrating Accelerometer...")
+        self.send_command(MSP_ACC_CALIBRATION)
 
     def takeoff(self):
-        """Sends takeoff command."""
-        self.logger.info("Taking off...")
+        """Sends takeoff sequence as seen in original lib."""
+        self.logger.info("Taking off sequence...")
+        # 1. Disarm pulse
+        self.disarm()
+        time.sleep(0.1)
+        # 2. Box Arm (High throttle + Arm)
+        self.logger.info("Box Arm...")
+        self.set_rc(throttle=1800, aux4=1500)
+        time.sleep(0.1)
+        # 3. Takeoff command
         self.send_command(CMD_TAKE_OFF)
 
     def land(self):
@@ -155,9 +177,16 @@ class PlutoV2:
         return MSP_HEADER + struct.pack('<BB', size, cmd) + payload + struct.pack('<B', checksum)
 
     def _io_loop(self):
-        """Background thread for non-blocking I/O at ~50Hz."""
+        """Background thread for non-blocking I/O at ~45Hz (matching original lib)."""
         buffer = b''
-        last_request_time = 0
+        
+        # Pre-create telemetry request packets
+        req_rc = self._create_packet(MSP_RC, b'')
+        req_attitude = self._create_packet(MSP_ATTITUDE, b'')
+        req_imu = self._create_packet(MSP_RAW_IMU, b'')
+        req_altitude = self._create_packet(MSP_ALTITUDE, b'')
+        req_analog = self._create_packet(MSP_ANALOG, b'')
+        telemetry_requests = req_rc + req_attitude + req_imu + req_altitude + req_analog
         
         while self.connected:
             start_time = time.time()
@@ -165,14 +194,13 @@ class PlutoV2:
             # 1. Watchdog & Telemetry Health Checks
             now = time.time()
             with self.lock:
-                # RC Watchdog
                 if now - self.last_input_time > self.watchdog_timeout:
-                    self.target_rc[0] = 1500 # Roll
-                    self.target_rc[1] = 1500 # Pitch
-                    self.target_rc[2] = 1500 # Throttle
-                    self.target_rc[3] = 1500 # Yaw
+                    # Fail-safe: Neutral hover
+                    self.target_rc[0] = 1500
+                    self.target_rc[1] = 1500
+                    self.target_rc[2] = 1500
+                    self.target_rc[3] = 1500
                 
-                # Telemetry Timeout Detection
                 if now - self.state['last_update'] > self.telemetry_timeout and self.state['last_update'] > 0:
                     if not self.telemetry_lost:
                         self.logger.warning("Telemetry lost!")
@@ -192,19 +220,12 @@ class PlutoV2:
                         self.client.sendall(cmd_packet)
                         self.target_command = CMD_NONE
 
-                # 3. Periodically Request Telemetry (~10Hz)
-                if now - last_request_time > 0.1:
-                    req_attitude = self._create_packet(MSP_ATTITUDE, b'')
-                    req_altitude = self._create_packet(MSP_ALTITUDE, b'')
-                    req_analog   = self._create_packet(MSP_ANALOG, b'')
-                    self.client.sendall(req_attitude)
-                    self.client.sendall(req_altitude)
-                    self.client.sendall(req_analog)
-                    last_request_time = now
+                # 3. Request ALL Telemetry (High frequency heartbeat like original lib)
+                self.client.sendall(telemetry_requests)
 
                 # 4. Read & Parse Responses
                 try:
-                    data = self.client.recv(1024)
+                    data = self.client.recv(2048)
                     if data:
                         buffer += data
                 except (BlockingIOError, socket.timeout):
@@ -217,9 +238,9 @@ class PlutoV2:
                 self.connected = False
                 break
 
-            # Maintain ~50Hz
+            # Maintain ~45Hz (matching original lib's 22ms)
             elapsed = time.time() - start_time
-            sleep_time = 0.02 - elapsed
+            sleep_time = 0.022 - elapsed
             if sleep_time > 0:
                 time.sleep(sleep_time)
 
@@ -254,10 +275,38 @@ class PlutoV2:
                 self._handle_payload(cmd, payload)
                 buffer = buffer[total_size:]
             else:
-                # Checksum failed, discard only the first byte and retry
                 buffer = buffer[1:]
             
         return buffer
+
+    def _handle_payload(self, cmd, payload):
+        """Updates internal state based on parsed MSP payloads."""
+        with self.lock:
+            try:
+                if cmd == MSP_ATTITUDE:
+                    r, p, y = struct.unpack('<hhh', payload)
+                    self.state['roll'] = r / 10.0
+                    self.state['pitch'] = p / 10.0
+                    self.state['yaw'] = y / 10.0
+                elif cmd == MSP_ALTITUDE:
+                    h, v = struct.unpack('<ih', payload)
+                    self.state['height'] = h
+                elif cmd == MSP_ANALOG:
+                    vbat = payload[0]
+                    self.state['battery'] = vbat / 10.0
+                    if len(payload) >= 5:
+                        self.state['rssi'] = struct.unpack('<H', payload[3:5])[0]
+                elif cmd == MSP_RC:
+                    self.state['rc'] = list(struct.unpack('<8H', payload))
+                elif cmd == MSP_RAW_IMU:
+                    # 9 int16s: accX, accY, accZ, gyroX, gyroY, gyroZ, magX, magY, magZ
+                    imu_data = struct.unpack('<9h', payload[:18])
+                    self.state['acc'] = list(imu_data[0:3])
+                    self.state['gyro'] = list(imu_data[3:6])
+                
+                self.state['last_update'] = time.time()
+            except Exception as e:
+                self.logger.debug(f"Payload parse error for cmd {cmd}: {e}")
 
     def _handle_payload(self, cmd, payload):
         """Updates internal state based on parsed MSP payloads."""
