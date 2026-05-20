@@ -1,0 +1,66 @@
+/* Industrial Retro QSS */
+
+QMainWindow {
+    background-color: #0d0d0d;
+}
+
+QWidget {
+    background-color: #121212;
+    color: #00ffcc;
+    font-family: 'Consolas', 'Courier New', monospace;
+}
+
+QSplitter::handle {
+    background-color: #222;
+    border: 1px solid #333;
+}
+
+QPushButton {
+    background-color: #1a1a1a;
+    border: 1px solid #333;
+    border-radius: 2px;
+    padding: 6px;
+    color: #00ffcc;
+    font-weight: bold;
+    text-transform: uppercase;
+    font-size: 11px;
+}
+
+QPushButton:hover {
+    background-color: #222;
+    border-color: #00ffcc;
+    /* Subtle glow */
+    border: 1px solid rgba(0, 255, 204, 0.5);
+}
+
+QPushButton:pressed {
+    background-color: #00ffcc;
+    color: #000;
+}
+
+QLabel {
+    color: #00ffcc;
+}
+
+QSlider::groove:vertical {
+    border: 1px solid #333;
+    width: 8px;
+    background: #0a0a0a;
+    margin: 0 12px;
+}
+
+QSlider::handle:vertical {
+    background: #00ffcc;
+    border: 1px solid #00ffcc;
+    height: 18px;
+    margin: 0 -10px;
+}
+
+QSlider::handle:vertical:hover {
+    background: #fff;
+}
+
+/* Specific button styles */
+#btn_arm { background-color: #440000; }
+#btn_disarm { background-color: #220000; }
+#btn_connect { background-color: #003300; }

@@ -181,12 +181,13 @@ class PlutoV2:
         buffer = b''
         
         # Pre-create telemetry request packets
-        req_rc = self._create_packet(MSP_RC, b'')
-        req_attitude = self._create_packet(MSP_ATTITUDE, b'')
-        req_imu = self._create_packet(MSP_RAW_IMU, b'')
-        req_altitude = self._create_packet(MSP_ALTITUDE, b'')
-        req_analog = self._create_packet(MSP_ANALOG, b'')
-        telemetry_requests = req_rc + req_attitude + req_imu + req_altitude + req_analog
+        telemetry_requests = [
+            self._create_packet(MSP_RC, b''),
+            self._create_packet(MSP_ATTITUDE, b''),
+            self._create_packet(MSP_RAW_IMU, b''),
+            self._create_packet(MSP_ALTITUDE, b''),
+            self._create_packet(MSP_ANALOG, b'')
+        ]
         
         while self.connected:
             start_time = time.time()
@@ -203,7 +204,7 @@ class PlutoV2:
                 
                 if now - self.state['last_update'] > self.telemetry_timeout and self.state['last_update'] > 0:
                     if not self.telemetry_lost:
-                        self.logger.warning("Telemetry lost!")
+                        self.logger.warning("Telemetry stream timed out.")
                         self.telemetry_lost = True
                 else:
                     self.telemetry_lost = False
@@ -220,21 +221,27 @@ class PlutoV2:
                         self.client.sendall(cmd_packet)
                         self.target_command = CMD_NONE
 
-                # 3. Request ALL Telemetry (High frequency heartbeat like original lib)
-                self.client.sendall(telemetry_requests)
+                # 3. Request Telemetry (Iterative to avoid buffer pressure)
+                for req in telemetry_requests:
+                    self.client.sendall(req)
 
                 # 4. Read & Parse Responses
-                try:
-                    data = self.client.recv(2048)
-                    if data:
-                        buffer += data
-                except (BlockingIOError, socket.timeout):
-                    pass
+                # Loop a few times to drain the socket buffer
+                for _ in range(5):
+                    try:
+                        data = self.client.recv(2048)
+                        if data:
+                            buffer += data
+                        else:
+                            break # Connection closed
+                    except (BlockingIOError, socket.timeout):
+                        break
                 
-                buffer = self._parse_buffer(buffer)
+                if buffer:
+                    buffer = self._parse_buffer(buffer)
 
             except Exception as e:
-                self.logger.error(f"I/O Error: {e}")
+                self.logger.error(f"Critical I/O Loop Error: {e}")
                 self.connected = False
                 break
 

@@ -1,0 +1,111 @@
+from PyQt6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QLabel
+from PyQt6.QtGui import QPainter, QColor, QPen, QFont, QLinearGradient
+from PyQt6.QtCore import Qt, QRect
+
+class VUMeter(QWidget):
+    def __init__(self, label="CH", min_val=1000, max_val=2000, initial_val=1000, parent=None):
+        super().__init__(parent)
+        self.label_text = label
+        self.min_val = min_val
+        self.max_val = max_val
+        self.current_val = initial_val
+        self.setMinimumWidth(55)
+        self.setMinimumHeight(120)
+
+    def set_value(self, val):
+        self.current_val = val
+        self.update()
+
+    def paintEvent(self, event):
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        
+        # Background
+        painter.fillRect(self.rect(), QColor(30, 30, 30))
+        
+        # Draw Label & Value (Smaller fonts to fit width)
+        painter.setPen(QColor(0, 255, 255))
+        painter.setFont(QFont("Consolas", 8))
+        painter.drawText(5, 15, self.label_text)
+        
+        # Dynamic color based on value
+        color = QColor(0, 255, 100)
+        if self.current_val > 1800: color = QColor(255, 0, 0)
+        elif self.current_val > 1600: color = QColor(255, 255, 0)
+        
+        painter.setPen(color)
+        painter.setFont(QFont("Consolas", 10, QFont.Weight.Bold))
+        painter.drawText(5, 35, str(int(self.current_val)))
+
+        # Draw VU Segments
+        margin = 5
+        meter_top = 45
+        meter_bottom = self.height() - margin
+        meter_height = meter_bottom - meter_top
+        
+        num_segments = 12
+        seg_height = (meter_height // num_segments) - 2
+        
+        # Calculate how many segments to light up
+        normalized = (self.current_val - self.min_val) / (self.max_val - self.min_val)
+        lit_segments = int(normalized * num_segments)
+        
+        for i in range(num_segments):
+            y = meter_bottom - (i + 1) * (seg_height + 2)
+            
+            # Segment color
+            if i < lit_segments:
+                if i > 12: seg_color = QColor(255, 0, 0)
+                elif i > 9: seg_color = QColor(255, 255, 0)
+                else: seg_color = QColor(0, 255, 100)
+            else:
+                seg_color = QColor(50, 50, 50) # Dimmed
+                
+            painter.fillRect(margin, y, self.width() - 2 * margin, seg_height, seg_color)
+
+class TelemetryRack(QWidget):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.layout = QHBoxLayout(self)
+        self.layout.setSpacing(10)
+        
+        self.meters = {
+            'roll': VUMeter("ROLL", initial_val=1500),
+            'pitch': VUMeter("PITCH", initial_val=1500),
+            'throttle': VUMeter("THROTTLE", initial_val=1000),
+            'yaw': VUMeter("YAW", initial_val=1500)
+        }
+        
+        for m in self.meters.values():
+            self.layout.addWidget(m)
+            
+        # Extra Stats Area (Battery, RSSI)
+        self.stats_widget = QWidget()
+        self.stats_layout = QVBoxLayout(self.stats_widget)
+        
+        self.lbl_bat = QLabel("BAT: 0.00V")
+        self.lbl_rssi = QLabel("RSSI: 0")
+        
+        for lbl in [self.lbl_bat, self.lbl_rssi]:
+            lbl.setStyleSheet("color: #0ff; font-family: Consolas; font-size: 14px; font-weight: bold;")
+            self.stats_layout.addWidget(lbl)
+            
+        self.layout.addWidget(self.stats_widget)
+
+    def update_telemetry(self, state):
+        # Update RC meters
+        rc = state.get('rc', [1500]*8)
+        self.meters['roll'].set_value(rc[0])
+        self.meters['pitch'].set_value(rc[1])
+        self.meters['throttle'].set_value(rc[2])
+        self.meters['yaw'].set_value(rc[3])
+        
+        # Update labels
+        self.lbl_bat.setText(f"BAT: {state.get('battery', 0.0):.2f}V")
+        self.lbl_rssi.setText(f"RSSI: {state.get('rssi', 0)}")
+        
+        # Color battery label red if low
+        if state.get('battery', 4.0) < 3.4:
+            self.lbl_bat.setStyleSheet("color: #f00; font-family: Consolas; font-size: 14px; font-weight: bold;")
+        else:
+            self.lbl_bat.setStyleSheet("color: #0ff; font-family: Consolas; font-size: 14px; font-weight: bold;")
