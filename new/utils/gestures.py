@@ -18,11 +18,14 @@ class HandChassis:
 
     def get_clutch_state(self, all_hands_landmarks, handedness_results):
         """
-        Looks for the 'Okay' pinch (Thumb 4 to Index 8) on the LEFT hand.
+        Looks for the 'Okay' pinch (Thumb 4 to Index 8).
+        In mirrored view:
+        - Physical Left Hand (Clutch) is detected as 'Right'.
+        - Physical Right Hand (Flight) is detected as 'Left'.
         """
         for idx, hand in enumerate(all_hands_landmarks):
-            side = handedness_results[idx][0].category_name # "Left" or "Right"
-            if side == "Left":
+            side = handedness_results[idx][0].category_name
+            if side == "Right": # Physical Left Hand
                 t_tip = hand[4]
                 i_tip = hand[8]
                 dist = math.sqrt((t_tip.x-i_tip.x)**2 + (t_tip.y-i_tip.y)**2)
