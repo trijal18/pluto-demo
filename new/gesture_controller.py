@@ -57,9 +57,8 @@ def main():
     print("="*40)
     print("CONTROLS:")
     print(" [A] Arm/Disarm | [L] Land | [Q] Quit")
-    print(" [MIRRORED VIEW ACTIVE]")
-    print(" [PHYSICAL LEFT]  - 'Okay' Pinch to Clutch")
-    print(" [PHYSICAL RIGHT] - Super-Triangle Flight")
+    print(" [LEFT]  - 'Okay' Pinch to Clutch")
+    print(" [RIGHT] - Super-Triangle Flight")
     print("="*40 + "\n")
 
     with vision.HandLandmarker.create_from_options(options) as landmarker:
@@ -78,10 +77,10 @@ def main():
             clutch_active = False
 
             if result.hand_landmarks:
-                # 1. Check Clutch (Physical LEFT is detected as 'Right' in mirrored view)
+                # 1. Check Clutch 
                 clutch_active = chassis.get_clutch_state(result.hand_landmarks, result.handedness)
                 
-                # 2. Find Flight Hand (Physical RIGHT is detected as 'Left' in mirrored view)
+                # 2. Find Flight Hand 
                 right_idx = -1
                 for i, hand_info in enumerate(result.handedness):
                     if hand_info[0].category_name == "Left":
@@ -92,15 +91,12 @@ def main():
                 for i, landmarks in enumerate(result.hand_landmarks):
                     side = result.handedness[i][0].category_name
                     
-                    # Mirror the Labels for the user:
-                    # Detected 'Left' -> Physical RIGHT (Flight)
-                    # Detected 'Right' -> Physical LEFT (Clutch)
                     if side == "Left":
                         color = (255, 0, 255)
-                        label = "PHYSICAL RIGHT (FLIGHT)"
+                        label = "RIGHT (FLIGHT)"
                     else:
-                        color = (0, 255, 0)
-                        label = "PHYSICAL LEFT (CLUTCH)"
+ -                       color = (0, 255, 0)
+                        label = "LEFT (CLUTCH)"
 
                     # 0. Draw Label
                     wrist_pt = (int(landmarks[0].x * w), int(landmarks[0].y * h) - 20)
