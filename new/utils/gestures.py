@@ -3,9 +3,9 @@ import math
 class HandChassis:
     """
     Translates MediaPipe Hand Landmarks into normalized drone control signals.
-    Uses the triangle: Wrist (0), Index Knuckle (5), Pinky Knuckle (17).
+    Uses the "Super-Triangle": Wrist (0), Thumb Tip (4), Pinky Tip (20).
     """
-    def __init__(self, clutch_threshold=0.06):
+    def __init__(self, clutch_threshold=0.05):
         self.clutch_threshold = clutch_threshold
         
         # Neutral offsets (captured on clutch engagement)
@@ -16,17 +16,18 @@ class HandChassis:
         
         self.is_engaged = False
 
-    def get_clutch_state(self, landmarks):
-        """Checks if Thumb (4) and Pinky (20) are pinched."""
-        t_tip = landmarks[4]
-        p_tip = landmarks[20]
-        
-        dist = math.sqrt(
-            (t_tip.x - p_tip.x)**2 + 
-            (t_tip.y - p_tip.y)**2 + 
-            (t_tip.z - p_tip.z)**2
-        )
-        return dist < self.clutch_threshold
+    def get_clutch_state(self, all_hands_landmarks, handedness_results):
+        """
+        Looks for the 'Okay' pinch (Thumb 4 to Index 8) on the LEFT hand.
+        """
+        for idx, hand in enumerate(all_hands_landmarks):
+            side = handedness_results[idx][0].category_name # "Left" or "Right"
+            if side == "Left":
+                t_tip = hand[4]
+                i_tip = hand[8]
+                dist = math.sqrt((t_tip.x-i_tip.x)**2 + (t_tip.y-i_tip.y)**2)
+                return dist < self.clutch_threshold
+        return False
 
     def set_neutral(self, landmarks):
         """Captures the current hand state as the 'Zero' point."""
@@ -37,35 +38,30 @@ class HandChassis:
         self.is_engaged = True
 
     def _calculate_raw_pitch(self, lm):
-        # Lean: Average Z of knuckles vs Wrist Z
-        knuckle_z = (lm[5].z + lm[17].z) / 2.0
-        return knuckle_z - lm[0].z
+        # Lean: Center of Thumb/Pinky line vs Wrist Z
+        mid_z = (lm[4].z + lm[20].z) / 2.0
+        return mid_z - lm[0].z
 
     def _calculate_raw_roll(self, lm):
-        # Wave: Y-difference between Index and Pinky knuckles
-        return lm[5].y - lm[17].y
+        # Wave: Pinky Y minus Thumb Y. 
+        # Tilting right (CW) -> Pinky moves down (larger Y), Thumb moves up (smaller Y).
+        # result: positive.
+        return lm[20].y - lm[4].y
 
     def _calculate_raw_yaw(self, lm):
-        # Screwdriver: Z-difference between Index and Pinky knuckles
-        return lm[5].z - lm[17].z
+        # Screwdriver: Thumb Z minus Pinky Z.
+        # Rotating right (CW) -> Thumb moves away (larger Z), Pinky moves toward (smaller Z).
+        # result: positive.
+        return lm[4].z - lm[20].z
 
     def get_controls(self, landmarks):
-        """
-        Returns normalized deltas (-1.0 to 1.0) relative to neutral.
-        """
+        """Returns normalized deltas relative to neutral."""
         if not self.is_engaged:
             return 0.0, 0.0, 0.0, 0.0
 
-        # 1. Throttle (Wrist Y) - Up is lower Y in screen space, so we invert
         throttle_delta = self.neutral_y - landmarks[0].y
-        
-        # 2. Pitch (Lean)
         pitch_delta = self._calculate_raw_pitch(landmarks) - self.neutral_pitch
-        
-        # 3. Roll (Wave)
         roll_delta = self._calculate_raw_roll(landmarks) - self.neutral_roll
-        
-        # 4. Yaw (Screwdriver)
         yaw_delta = self._calculate_raw_yaw(landmarks) - self.neutral_yaw
 
         return throttle_delta, pitch_delta, roll_delta, yaw_delta
