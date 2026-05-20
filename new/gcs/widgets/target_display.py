@@ -1,4 +1,4 @@
-from PyQt6.QtWidgets import QWidget, QHBoxLayout, QLabel, QVBoxLayout
+from PyQt6.QtWidgets import QWidget, QHBoxLayout, QLabel, QVBoxLayout, QSizePolicy
 from PyQt6.QtGui import QPainter, QColor, QFont
 from PyQt6.QtCore import Qt
 
@@ -59,8 +59,8 @@ class TargetDisplay(QWidget):
         
         self.layout.addWidget(QLabel("TARGET:"))
         for ind in self.indicators.values():
+            ind.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
             self.layout.addWidget(ind)
-        self.layout.addStretch()
 
     def update_targets(self, r, p, t, y):
         self.indicators['roll'].set_value(r)

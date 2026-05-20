@@ -150,8 +150,3 @@ class ViewportWidget(QWidget):
             painter.setBrush(self.color_clutch)
             painter.drawEllipse(x_off + scaled_pixmap.width() - 40, y_off + margin, 20, 20)
             painter.drawText(x_off + scaled_pixmap.width() - 140, y_off + margin + 15, "CLUTCH ENGAGED")
-        
-        # Scanlines effect (optional/subtle)
-        painter.setPen(QColor(0, 0, 0, 30))
-        for i in range(0, target_h, 4):
-            painter.drawLine(0, i, target_w, i)

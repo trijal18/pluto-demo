@@ -69,6 +69,7 @@ class RavenGCS(QMainWindow):
         
         # Right Stack (Control)
         self.control_stack = QWidget()
+        self.control_stack.setMaximumWidth(300) # Constrain control column
         self.control_layout = QVBoxLayout(self.control_stack)
         self.telemetry = TelemetryRack()
         self.controls = ControlDeck()
@@ -121,7 +122,6 @@ class RavenGCS(QMainWindow):
             clutch_active = self.chassis.get_clutch_state(landmarks, handedness)
             self.viewport.set_clutch(clutch_active)
             
-            # Find Flight Hand (Physical Right, Detected as Left in mirrored)
             flight_idx = -1
             for i, h in enumerate(handedness):
                 if h[0].category_name == "Left":
@@ -138,31 +138,23 @@ class RavenGCS(QMainWindow):
                 
                 dt, dp, dr, dy = self.chassis.get_controls(flight_landmarks)
                 
-                # Proportional Mapping with explicit Clamping
+                # Relative Control Logic (Matching legacy script)
                 target_r = clamp_rc(1500 + (dr * 2000))
                 target_p = clamp_rc(1500 + (dp * 2500))
                 target_t = clamp_rc(self.last_throttle + (dt * 1500))
                 target_y = clamp_rc(1500 + (dy * 2500))
                 
-                # Apply Smoothing
-                r = self.filters['roll'].apply(target_r)
-                p = self.filters['pitch'].apply(target_p)
-                t = self.filters['throttle'].apply(target_t)
-                y = self.filters['yaw'].apply(target_y)
-                
-                # Double clamp final filtered values
-                r, p, t, y = clamp_rc(r), clamp_rc(p), clamp_rc(t), clamp_rc(y)
-                
-                self.drone_worker.set_rc(roll=r, pitch=p, throttle=t, yaw=y)
-                self.last_throttle = t
-                self.target_display.update_targets(r, p, t, y)
+                # Only update state and last_throttle while clutched
+                self.drone_worker.set_rc(roll=target_r, pitch=target_p, throttle=target_t, yaw=target_y)
+                self.last_throttle = target_t
+                self.target_display.update_targets(target_r, target_p, target_t, target_y)
             else:
-                if self.chassis.is_engaged:
-                    self.chassis.is_engaged = False
+                self.chassis.is_engaged = False
+                if self.mode == "GESTURE":
                     self.mode = "STANDBY"
                     self.viewport.set_mode(self.mode)
-                    # Reset to neutral
-                    self.drone_worker.set_rc(roll=1500, pitch=1500, yaw=1500)
+                    # Reset neutral axes, keep throttle at last known position
+                    self.drone_worker.set_rc(roll=1500, pitch=1500, yaw=1500, throttle=self.last_throttle)
                     self.target_display.update_targets(1500, 1500, self.last_throttle, 1500)
         else:
             self.viewport.set_clutch(False)
