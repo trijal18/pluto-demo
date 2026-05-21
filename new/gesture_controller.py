@@ -8,8 +8,8 @@ import os
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 from plutov2 import PlutoV2, CMD_NONE, CMD_TAKE_OFF, CMD_LAND
-from utils.filters import LowPassFilter
-from utils.gestures import HandChassis
+from gcs.utils.filters import LowPassFilter
+from gcs.utils.gestures import HandChassis
 
 from mediapipe.tasks import python
 from mediapipe.tasks.python import vision
