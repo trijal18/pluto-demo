@@ -1,28 +1,41 @@
 import cv2
 import numpy as np
-from PyQt6.QtWidgets import QWidget, QLabel
-from PyQt6.QtGui import QImage, QPixmap, QPainter, QColor, QPen, QFont
-from PyQt6.QtCore import Qt, QRect
+import math
+import time
+from PyQt6.QtWidgets import QWidget
+from PyQt6.QtGui import QImage, QPixmap, QPainter, QColor, QPen, QFont, QBrush, QPolygonF, QPainterPath
+from PyQt6.QtCore import Qt, QRect, QPointF, QRectF, pyqtSignal
 
 class ViewportWidget(QWidget):
+    cal_acc_clicked = pyqtSignal()
+    cal_mag_clicked = pyqtSignal()
+
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setAttribute(Qt.WidgetAttribute.WA_OpaquePaintEvent)
-        self.setMinimumSize(320, 240)
-        
-        self.current_frame = None
+        self.image = None
         self.landmarks = None
         self.handedness = None
+        self.mode = "DISCONNECTED"
         self.clutch_active = False
-        self.mode = "STANDBY"
         
-        # Retro Colors
-        self.color_skeleton = QColor(0, 255, 100, 200) # Phosphor Green
-        self.color_hud = QColor(0, 255, 255, 180) # Cyan
-        self.color_clutch = QColor(255, 165, 0) # Amber
+        # HUD State
+        self.roll = 0.0
+        self.pitch = 0.0
+        self.yaw = 0.0
+        self.altitude = 0
+        self.battery = 0.0
+        self.soc = 0
+        self.rssi = 0
+        self.watchdog = False
+        self.targets = [1500, 1500, 1000, 1500] # R, P, T, Y
+        
+        self.video_rect = QRect(0, 0, 0, 0)
+        self.btn_acc_rect = QRect(0, 0, 0, 0)
+        self.btn_mag_rect = QRect(0, 0, 0, 0)
+        self.setMouseTracking(True)
 
     def update_frame(self, frame):
-        self.current_frame = frame
+        self.image = frame
         self.update()
 
     def update_landmarks(self, landmarks, handedness):
@@ -30,123 +43,232 @@ class ViewportWidget(QWidget):
         self.handedness = handedness
         self.update()
 
-    def set_clutch(self, active):
-        self.clutch_active = active
+    def update_hud(self, state):
+        self.roll = state.get('roll', 0.0)
+        self.pitch = state.get('pitch', 0.0)
+        self.yaw = state.get('yaw', 0.0)
+        self.altitude = state.get('height', 0)
+        self.battery = state.get('battery', 0.0)
+        self.soc = state.get('battery_percentage', 0)
+        self.rssi = state.get('rssi', 0)
+        self.watchdog = state.get('watchdog_active', False)
+        self.update()
+
+    def update_targets(self, r, p, t, y):
+        self.targets = [r, p, t, y]
         self.update()
 
     def set_mode(self, mode):
         self.mode = mode
         self.update()
 
+    def set_clutch(self, active):
+        self.clutch_active = active
+        self.update()
+
     def paintEvent(self, event):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-        
-        # 1. Draw Background
-        painter.fillRect(self.rect(), QColor(20, 20, 20))
-        
-        if self.current_frame is None:
-            painter.setPen(self.color_hud)
-            painter.drawText(self.rect(), Qt.AlignmentFlag.AlignCenter, "WAITING FOR VIDEO STREAM...")
-            return
 
-        # 2. Draw Base Video
-        h, w, ch = self.current_frame.shape
-        bytes_per_line = ch * w
-        q_img = QImage(self.current_frame.data, w, h, bytes_per_line, QImage.Format.Format_RGB888).rgbSwapped()
-        
-        # Scale to fit widget
-        target_w = self.width()
-        target_h = self.height()
-        scaled_pixmap = QPixmap.fromImage(q_img).scaled(target_w, target_h, Qt.AspectRatioMode.KeepAspectRatio)
-        
-        # Calculate offset for centering
-        x_off = (target_w - scaled_pixmap.width()) // 2
-        y_off = (target_h - scaled_pixmap.height()) // 2
-        
-        painter.drawPixmap(x_off, y_off, scaled_pixmap)
-        
-        # Calculate scale factor for landmarks
-        scale_x = scaled_pixmap.width() / w
-        scale_y = scaled_pixmap.height() / h
+        # 1. Background
+        painter.fillRect(self.rect(), QColor(5, 5, 5))
 
-        # 2. Draw Skeleton
-        if self.landmarks:
-            painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        # 2. Video Frame
+        if self.image is not None:
+            h, w, ch = self.image.shape
+            bytes_per_line = ch * w
+            qt_image = QImage(self.image.data, w, h, bytes_per_line, QImage.Format.Format_RGB888).rgbSwapped()
+            scaled_pixmap = QPixmap.fromImage(qt_image).scaled(self.size(), Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
             
-            for i, hand_landmarks in enumerate(self.landmarks):
-                side = self.handedness[i][0].category_name # "Left" or "Right"
-                
-                # Colors based on side
-                if side == "Left": # Physical Right (Flight)
-                    base_color = QColor(255, 0, 255, 180) # Magenta
-                    highlight_color = QColor(0, 255, 255) # Cyan
-                    label = "RIGHT (FLIGHT)"
-                else: # Physical Left (Clutch)
-                    base_color = QColor(0, 255, 100, 180) # Green
-                    highlight_color = QColor(0, 255, 0) # Bright Green
-                    label = "LEFT (CLUTCH)"
+            x_off = (self.width() - scaled_pixmap.width()) // 2
+            y_off = (self.height() - scaled_pixmap.height()) // 2
+            self.video_rect = QRect(x_off, y_off, scaled_pixmap.width(), scaled_pixmap.height())
+            
+            painter.drawPixmap(x_off, y_off, scaled_pixmap)
+            
+            # Watchdog Pulse
+            if self.watchdog:
+                glow = int(abs(math.sin(time.time() * 5)) * 180)
+                painter.setPen(QPen(QColor(255, 0, 0, glow), 6))
+                painter.setBrush(Qt.BrushStyle.NoBrush)
+                painter.drawRect(self.video_rect.adjusted(3, 3, -3, -3))
 
-                painter.setPen(QPen(base_color, 1))
-                
-                # 2.1 Full Skeleton (Thin)
-                connections = [
-                    (0,1),(1,2),(2,3),(3,4), (0,5),(5,6),(6,7),(7,8),
-                    (5,9),(9,10),(10,11),(11,12), (9,13),(13,14),(14,15),(15,16),
-                    (13,17),(17,18),(18,19),(19,20), (0,17)
-                ]
-                
-                for start_idx, end_idx in connections:
-                    pt1 = hand_landmarks[start_idx]
-                    pt2 = hand_landmarks[end_idx]
-                    p1 = (int(pt1.x * scaled_pixmap.width()) + x_off, int(pt1.y * scaled_pixmap.height()) + y_off)
-                    p2 = (int(pt2.x * scaled_pixmap.width()) + x_off, int(pt2.y * scaled_pixmap.height()) + y_off)
-                    painter.drawLine(p1[0], p1[1], p2[0], p2[1])
+            # HUD Layer
+            painter.save()
+            painter.setClipRect(self.video_rect)
+            
+            # Draw Hand Skeleton
+            if self.landmarks and self.handedness:
+                self._draw_landmarks(painter, self.video_rect)
 
-                # 2.2 Highlights
-                if side == "Left": # Flight Hand Highlights
-                    painter.setPen(QPen(highlight_color, 2))
-                    painter.setBrush(highlight_color)
-                    pts = [0, 4, 20] # Wrist, Thumb, Pinky
-                    tri_pts = []
-                    for idx in pts:
-                        lm = hand_landmarks[idx]
-                        px = int(lm.x * scaled_pixmap.width()) + x_off
-                        py = int(lm.y * scaled_pixmap.height()) + y_off
-                        painter.drawEllipse(px-4, py-4, 8, 8)
-                        tri_pts.append((px, py))
-                    
-                    # Draw Super-Triangle
-                    painter.drawLine(tri_pts[0][0], tri_pts[0][1], tri_pts[1][0], tri_pts[1][1])
-                    painter.drawLine(tri_pts[1][0], tri_pts[1][1], tri_pts[2][0], tri_pts[2][1])
-                    painter.drawLine(tri_pts[2][0], tri_pts[2][1], tri_pts[0][0], tri_pts[0][1])
-                
-                else: # Clutch Hand Highlights
-                    painter.setPen(QPen(highlight_color, 2))
-                    painter.setBrush(highlight_color)
-                    for idx in [4, 8]: # Thumb and Index Tips
-                        lm = hand_landmarks[idx]
-                        px = int(lm.x * scaled_pixmap.width()) + x_off
-                        py = int(lm.y * scaled_pixmap.height()) + y_off
-                        painter.drawEllipse(px-4, py-4, 8, 8)
+            # Draw HUD Instruments
+            self._draw_horizon_gauge(painter, self.video_rect)
+            self._draw_altitude_tape(painter, self.video_rect)
+            self._draw_compass_ribbon(painter, self.video_rect)
+            self._draw_system_badges(painter, self.video_rect)
+            self._draw_hud_buttons(painter, self.video_rect)
+            self._draw_target_bars(painter, self.video_rect)
+            
+            painter.restore()
 
-                # 2.3 Label
-                wrist = hand_landmarks[0]
-                wx = int(wrist.x * scaled_pixmap.width()) + x_off
-                wy = int(wrist.y * scaled_pixmap.height()) + y_off
-                painter.setPen(base_color)
-                painter.drawText(wx, wy - 20, label)
+    def _draw_landmarks(self, painter, rect):
+        for i, (lm_list, hand) in enumerate(zip(self.landmarks, self.handedness)):
+            label = hand[0].category_name # 'Left' or 'Right'
+            color = QColor(0, 255, 255, 200) if label == "Left" else QColor(0, 255, 100, 200)
+            
+            painter.setPen(Qt.PenStyle.NoPen)
+            painter.setBrush(QBrush(color))
+            for pt in lm_list:
+                px = rect.x() + int(pt.x * rect.width())
+                py = rect.y() + int(pt.y * rect.height())
+                painter.drawEllipse(px - 2, py - 2, 4, 4)
+            
+            # Skeleton
+            painter.setPen(QPen(color, 1))
+            painter.setBrush(Qt.BrushStyle.NoBrush)
+            l = lm_list
+            conn = [(0,1),(1,2),(2,3),(3,4), (0,5),(5,6),(6,7),(7,8), (0,17),(17,18),(18,19),(19,20), (5,9),(9,13),(13,17), (9,10),(10,11),(11,12), (13,14),(14,15),(15,16)]
+            for s, e in conn:
+                p1 = QPointF(rect.x() + l[s].x * rect.width(), rect.y() + l[s].y * rect.height())
+                p2 = QPointF(rect.x() + l[e].x * rect.width(), rect.y() + l[e].y * rect.height())
+                painter.drawLine(p1, p2)
 
-        # 3. Draw Tactical HUD
-        painter.setPen(QPen(self.color_hud, 2))
-        painter.setFont(QFont("Consolas", 12, QFont.Weight.Bold))
+    def _draw_horizon_gauge(self, painter, rect):
+        size = 110
+        x, y = rect.x() + 20, rect.y() + 20
+        cx, cy = x + size/2, y + size/2
         
-        # HUD Corners
-        margin = 20
-        painter.drawText(x_off + margin, y_off + margin + 20, f"MODE: {self.mode}")
+        painter.save()
+        painter.setBrush(Qt.BrushStyle.NoBrush)
+        painter.setPen(Qt.PenStyle.NoPen)
+        path = QPainterPath()
+        path.addEllipse(QRectF(x+5, y+5, size-10, size-10))
+        painter.setClipPath(path)
         
-        # Clutch Indicator
-        if self.clutch_active:
-            painter.setBrush(self.color_clutch)
-            painter.drawEllipse(x_off + scaled_pixmap.width() - 40, y_off + margin, 20, 20)
-            painter.drawText(x_off + scaled_pixmap.width() - 140, y_off + margin + 15, "CLUTCH ENGAGED")
+        painter.translate(cx, cy)
+        painter.rotate(-self.roll)
+        po = self.pitch * 1.5
+        painter.fillRect(QRectF(-size, -size - po, size*2, size + po), QColor(0, 100, 255, 120)) # Sky
+        painter.fillRect(QRectF(-size, -po, size*2, size + po), QColor(150, 75, 0, 120)) # Ground
+        painter.setPen(QPen(Qt.GlobalColor.white, 2))
+        painter.drawLine(QPointF(-size/2, -po), QPointF(size/2, -po))
+        painter.restore()
+        
+        painter.setBrush(Qt.BrushStyle.NoBrush)
+        painter.setPen(QPen(QColor(0, 255, 204), 2))
+        painter.drawEllipse(QRectF(x+5, y+5, size-10, size-10))
+
+    def _draw_altitude_tape(self, painter, rect):
+        tw, th = 55, 220
+        x, y = rect.x() + 20, rect.y() + 150
+        
+        painter.save()
+        painter.setBrush(Qt.BrushStyle.NoBrush)
+        painter.translate(x, y)
+        painter.fillRect(0, 0, tw, th, QColor(0, 0, 0, 100))
+        painter.setPen(QPen(QColor(0, 255, 204, 120), 1))
+        painter.drawRect(0, 0, tw, th)
+        
+        clip = QPainterPath()
+        clip.addRect(QRectF(0, 0, tw, th))
+        painter.setClipPath(clip)
+        
+        cy = th / 2
+        alt = int(self.altitude)
+        painter.setFont(QFont("Consolas", 8))
+        for v in range((alt // 20 - 6) * 20, (alt // 20 + 7) * 20, 20):
+            yy = cy + (self.altitude - v) * 2
+            painter.setPen(QColor(0, 255, 204))
+            painter.drawLine(40, int(yy), tw, int(yy))
+            painter.drawText(5, int(yy + 4), str(v))
+        painter.restore()
+        
+        painter.setPen(QPen(Qt.GlobalColor.yellow, 2))
+        painter.setBrush(QBrush(Qt.GlobalColor.yellow))
+        arrow = QPolygonF([QPointF(x+tw, y+cy), QPointF(x+tw+10, y+cy-6), QPointF(x+tw+10, y+cy+6)])
+        painter.drawPolygon(arrow)
+        painter.setFont(QFont("Consolas", 10, QFont.Weight.Bold))
+        painter.drawText(x+tw+14, y+int(cy+5), f"{self.altitude}cm")
+
+    def _draw_hud_buttons(self, painter, rect):
+        bx, by = rect.x() + 20, rect.y() + rect.height() - 75
+        self.btn_acc_rect = QRect(bx, by, 75, 25)
+        self.btn_mag_rect = QRect(bx, by + 30, 75, 25)
+        
+        painter.setFont(QFont("Consolas", 8, QFont.Weight.Bold))
+        for r, label in [(self.btn_acc_rect, "ACC CAL"), (self.btn_mag_rect, "MAG CAL")]:
+            painter.setBrush(QBrush(QColor(0, 60, 60, 180)))
+            painter.setPen(QPen(QColor(0, 255, 204), 1))
+            painter.drawRect(r)
+            painter.drawText(r, Qt.AlignmentFlag.AlignCenter, label)
+
+    def _draw_compass_ribbon(self, painter, rect):
+        cx = rect.x() + rect.width() / 2
+        rw, rh = 350, 25
+        ry = rect.y() + 15
+        r_rect = QRectF(cx - rw/2, ry, rw, rh)
+        
+        painter.setBrush(QBrush(QColor(0, 0, 0, 100)))
+        painter.setPen(QPen(QColor(0, 255, 204, 120), 1))
+        painter.drawRect(r_rect)
+        
+        painter.save()
+        painter.setClipRect(r_rect)
+        yaw = self.yaw % 360
+        painter.setFont(QFont("Consolas", 9))
+        for d in range(int(yaw - 45), int(yaw + 46)):
+            xx = cx + (d - yaw) * 4
+            if d % 30 == 0:
+                label = str(d % 360)
+                if label == "0": label = "N"
+                elif label == "90": label = "E"
+                elif label == "180": label = "S"
+                elif label == "270": label = "W"
+                painter.setPen(QColor(0, 255, 204))
+                painter.drawLine(QPointF(xx, ry), QPointF(xx, ry + 12))
+                painter.drawText(int(xx - 8), int(ry + 23), label)
+            elif d % 5 == 0:
+                painter.setPen(QColor(0, 255, 204, 80))
+                painter.drawLine(QPointF(xx, ry), QPointF(xx, ry + 8))
+        painter.restore()
+        
+        painter.setPen(QPen(Qt.GlobalColor.red, 2))
+        painter.drawLine(QPointF(cx, ry - 3), QPointF(cx, ry + rh + 3))
+
+    def _draw_system_badges(self, painter, rect):
+        x = rect.x() + rect.width() - 120
+        y = rect.y() + 25
+        painter.setFont(QFont("Consolas", 10, QFont.Weight.Bold))
+        color = QColor(0, 255, 0) if self.soc > 40 else QColor(255, 255, 0) if self.soc > 20 else QColor(255, 50, 50)
+        painter.setPen(color)
+        painter.drawText(x, y, f"{self.battery:.2f}V")
+        painter.drawText(x, y + 20, f"SOC: {self.soc}%")
+        painter.setPen(QColor(0, 255, 204))
+        painter.drawText(x, y + 40, f"RSSI: {self.rssi}")
+
+    def _draw_target_bars(self, painter, rect):
+        bw, bh = 140, 10
+        labels = ["ROL", "PIT", "THR", "YAW"]
+        total_w = len(labels) * (bw + 15)
+        start_x = rect.x() + (rect.width() - total_w) / 2
+        y = rect.y() + rect.height() - 30
+        
+        painter.setFont(QFont("Consolas", 8, QFont.Weight.Bold))
+        for i, val in enumerate(self.targets):
+            bx = start_x + i * (bw + 15)
+            painter.setPen(QColor(0, 255, 204, 255))
+            painter.drawText(int(bx), int(y - 5), f"T_{labels[i]}")
+            painter.setPen(QPen(QColor(0, 255, 204, 120), 1))
+            painter.setBrush(QBrush(QColor(20, 20, 20, 180)))
+            painter.drawRect(QRectF(bx, y, bw, bh))
+            fill_w = int(((val - 1000) / 1000) * bw)
+            painter.setPen(Qt.PenStyle.NoPen)
+            painter.setBrush(QBrush(QColor(0, 255, 204, 220)))
+            painter.fillRect(QRectF(bx, y, fill_w, bh), painter.brush())
+
+    def mousePressEvent(self, event):
+        if self.btn_acc_rect.contains(event.pos()):
+            self.cal_acc_clicked.emit()
+        elif self.btn_mag_rect.contains(event.pos()):
+            self.cal_mag_clicked.emit()
+        super().mousePressEvent(event)
