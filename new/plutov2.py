@@ -6,7 +6,8 @@ import logging
 
 # MSP V1 Constants
 MSP_HEADER = b'$M<'
-MSP_RESPONSE_HEADER = b'$M>'
+# Supported response headers (standard 0x3e and firmware-specific 0x21)
+MSP_RESPONSE_HEADERS = [b'$M>', b'$M!']
 
 # MSP Command IDs
 MSP_IDENT = 100
@@ -297,9 +298,14 @@ class PlutoV2:
     def _parse_buffer(self, buffer):
         """Robustly parses the byte buffer for MSP response packets."""
         while len(buffer) >= 6:
-            idx = buffer.find(MSP_RESPONSE_HEADER)
-            if idx == -1:
+            # Find the earliest occurrence of any valid response header
+            indices = [buffer.find(h) for h in MSP_RESPONSE_HEADERS]
+            valid_indices = [i for i in indices if i != -1]
+            
+            if not valid_indices:
                 return b''
+            
+            idx = min(valid_indices)
             
             if idx > 0:
                 buffer = buffer[idx:]

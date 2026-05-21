@@ -1,0 +1,52 @@
+--- ROBUST STRESS TEST STARTING ---
+
+[0/5] Arming for RC Test...
+
+[1/5] Testing RC Range Persistence...
+Sent: [1000, 1000, 1000, 1000] | Drone Reports: [1000, 1000, 1000, 1000]
+Sent: [2000, 2000, 2000, 2000] | Drone Reports: [2000, 2000, 2000, 2000]
+Sent: [1500, 1500, 1500, 1500] | Drone Reports: [1500, 1500, 1500, 1500]
+
+[2/5] Testing Flight Commands...
+Executing command ID: 4
+Executing command ID: 3
+Executing command ID: 6
+Executing command ID: 5
+
+[3/5] Testing Sensor Feedback...
+ALT: 292 | BAT: 3.7V | ACC: [-63, 41, 446] | MAG: [-356, -202, -16]
+ALT: 297 | BAT: 3.7V | ACC: [-38, 0, 553] | MAG: [-350, -212, -16]
+ALT: 301 | BAT: 3.7V | ACC: [-43, -10, 525] | MAG: [-321, -217, -11]
+ALT: 303 | BAT: 3.7V | ACC: [-51, -7, 508] | MAG: [-333, -222, -5]
+ALT: 305 | BAT: 3.7V | ACC: [-40, 5, 518] | MAG: [-338, -217, 11]
+ALT: 305 | BAT: 3.7V | ACC: [-38, 3, 501] | MAG: [-333, -217, 5]
+ALT: 303 | BAT: 3.7V | ACC: [-33, -2, 516] | MAG: [-350, -217, 5]
+ALT: 301 | BAT: 3.7V | ACC: [-32, -1, 511] | MAG: [-350, -217, 11]
+ALT: 298 | BAT: 3.7V | ACC: [-25, -2, 502] | MAG: [-344, -222, 22]
+ALT: 295 | BAT: 3.7V | ACC: [-19, -5, 510] | MAG: [-333, -212, -5]
+
+[4/5] Triggering Calibrations...
+
+[5/5] Stability Test (10s continuous monitoring)...
+Telemetry Live: 1779398681.8626263 | Cycle time OK
+Telemetry Live: 1779398682.3552 | Cycle time OK
+Telemetry Live: 1779398682.8688445 | Cycle time OK
+Telemetry Live: 1779398683.3602817 | Cycle time OK
+Telemetry Live: 1779398683.875512 | Cycle time OK
+Telemetry Live: 1779398684.3675523 | Cycle time OK
+Telemetry Live: 1779398684.8602617 | Cycle time OK
+Telemetry Live: 1779398685.3740017 | Cycle time OK
+Telemetry Live: 1779398685.8677132 | Cycle time OK
+Telemetry Live: 1779398686.3812647 | Cycle time OK
+Telemetry Live: 1779398686.873126 | Cycle time OK
+Telemetry Live: 1779398687.3663962 | Cycle time OK
+Telemetry Live: 1779398687.8805754 | Cycle time OK
+Telemetry Live: 1779398688.3743222 | Cycle time OK
+Telemetry Live: 1779398688.8652327 | Cycle time OK
+Telemetry Live: 1779398689.35712 | Cycle time OK
+Telemetry Live: 1779398689.872058 | Cycle time OK
+Telemetry Live: 1779398690.3638833 | Cycle time OK
+Telemetry Live: 1779398690.877739 | Cycle time OK
+Telemetry Live: 1779398691.36861 | Cycle time OK
+
+--- DISARMING AND CLEANUP ---

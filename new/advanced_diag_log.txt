@@ -1,0 +1,27 @@
+--- Starting Advanced MSP Diagnostic ---
+Connected to drone.
+--- Requesting MSP_IDENT (ID: 100) ---
+TX: 244d3c006464
+RX: 244d21006464
+WARNING: No valid MSP header in response
+
+
+--- Requesting MSP_STATUS (ID: 101) ---
+TX: 244d3c006565
+RX: 244d3e0b658000000007002a00000000c3
+SUCCESS: Valid header found in response
+
+
+--- Requesting MSP_ANALOG (ID: 110) ---
+TX: 244d3c006e6e
+RX: 244d3e076e2904000000100054
+SUCCESS: Valid header found in response
+
+
+--- Requesting MSP_ATTITUDE (ID: 108) ---
+TX: 244d3c006c6c
+RX: 244d3e066c1c000500610012
+SUCCESS: Valid header found in response
+
+
+Diagnostic Finished.
