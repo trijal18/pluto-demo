@@ -8,8 +8,8 @@ import os
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 from plutov2 import PlutoV2, CMD_NONE, CMD_TAKE_OFF, CMD_LAND
-from gcs.utils.filters import LowPassFilter
-from gcs.utils.gestures import HandChassis
+from gcs.utils.filters import LowPassFilter, OneEuroFilter
+from gcs.utils.gestures import HandChassis, HandChassisAdvanced
 
 from mediapipe.tasks import python
 from mediapipe.tasks.python import vision
@@ -17,6 +17,10 @@ from mediapipe.tasks.python import vision
 # --- Constants ---
 MODEL_PATH = "hand_landmarker.task"
 ALPHA = 0.20  # Cinematic Smoothing
+
+# OneEuro Constants
+MC = 1.0
+BETA = 0.007
 
 # Sensitivities (Higher = faster response to smaller movements)
 SENS_THROTTLE = 1500.0  # Wrist Y movement
@@ -42,11 +46,11 @@ def main():
     )
     
     # 3. Initialize Utils
-    chassis = HandChassis()
-    f_roll = LowPassFilter(alpha=ALPHA)
-    f_pitch = LowPassFilter(alpha=ALPHA)
-    f_yaw = LowPassFilter(alpha=ALPHA)
-    f_throttle = LowPassFilter(alpha=ALPHA, initial_value=1000)
+    chassis = HandChassisAdvanced(deadzone=0.02)
+    f_roll = OneEuroFilter(min_cutoff=MC, beta=BETA)
+    f_pitch = OneEuroFilter(min_cutoff=MC, beta=BETA)
+    f_yaw = OneEuroFilter(min_cutoff=MC, beta=BETA)
+    f_throttle = OneEuroFilter(min_cutoff=MC, beta=BETA, initial_value=1000)
     
     last_throttle = 1000
     is_armed = False

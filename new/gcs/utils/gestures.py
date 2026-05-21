@@ -68,3 +68,27 @@ class HandChassis:
         yaw_delta = self._calculate_raw_yaw(landmarks) - self.neutral_yaw
 
         return throttle_delta, pitch_delta, roll_delta, yaw_delta
+
+class HandChassisAdvanced(HandChassis):
+    """
+    Advanced version of HandChassis with Deadzone support.
+    """
+    def __init__(self, clutch_threshold=0.05, deadzone=0.02):
+        super().__init__(clutch_threshold)
+        self.deadzone = deadzone
+
+    def _apply_deadzone(self, value):
+        if abs(value) < self.deadzone:
+            return 0.0
+        return value
+
+    def get_controls(self, landmarks):
+        """Returns normalized deltas relative to neutral with deadzone applied."""
+        dt, dp, dr, dy = super().get_controls(landmarks)
+        
+        # Apply deadzone to R, P, Y (Throttle usually doesn't need it as much)
+        dp = self._apply_deadzone(dp)
+        dr = self._apply_deadzone(dr)
+        dy = self._apply_deadzone(dy)
+        
+        return dt, dp, dr, dy

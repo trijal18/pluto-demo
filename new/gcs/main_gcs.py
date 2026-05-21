@@ -8,8 +8,8 @@ from PyQt6.QtCore import Qt, QTimer
 # Add paths for imports
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
-from utils.filters import LowPassFilter
-from utils.gestures import HandChassis
+from utils.filters import LowPassFilter, OneEuroFilter
+from utils.gestures import HandChassis, HandChassisAdvanced
 
 from workers.vision_worker import VisionWorker
 from workers.drone_worker import DroneWorker
@@ -37,12 +37,12 @@ class RavenGCS(QMainWindow):
             self.setStyleSheet("background-color: #0a0a0a; color: #0ff;")
 
         # 1. Core Logic Components
-        self.chassis = HandChassis()
+        self.chassis = HandChassisAdvanced(deadzone=0.02)
         self.filters = {
-            'roll': LowPassFilter(alpha=0.20),
-            'pitch': LowPassFilter(alpha=0.20),
-            'yaw': LowPassFilter(alpha=0.20),
-            'throttle': LowPassFilter(alpha=0.20, initial_value=1000)
+            'roll': OneEuroFilter(min_cutoff=1.0, beta=0.007),
+            'pitch': OneEuroFilter(min_cutoff=1.0, beta=0.007),
+            'yaw': OneEuroFilter(min_cutoff=1.0, beta=0.007),
+            'throttle': OneEuroFilter(min_cutoff=1.0, beta=0.007, initial_value=1000)
         }
         self.last_throttle = 1000
         self.mode = "STANDBY" # STANDBY, GESTURE, MANUAL
