@@ -43,6 +43,10 @@ class DroneWorker(QThread):
         if self.drone.connected:
             self.drone.set_rc(roll, pitch, yaw, throttle, aux1, aux2, aux3, aux4)
 
+    def reset_rc(self):
+        if self.drone.connected:
+            self.drone.reset()
+
     def arm(self):
         if self.drone.connected:
             self.drone.arm()

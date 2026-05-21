@@ -7,8 +7,6 @@ from PyQt6.QtCore import QThread, pyqtSignal
 
 # Add parent directory to path to import utils
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from utils.filters import LowPassFilter
-from utils.gestures import HandChassis
 
 from mediapipe.tasks import python
 from mediapipe.tasks.python import vision

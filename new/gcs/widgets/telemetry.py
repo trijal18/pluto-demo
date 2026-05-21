@@ -83,7 +83,7 @@ class TelemetryRack(QWidget):
         self.stats_widget = QWidget()
         self.stats_layout = QVBoxLayout(self.stats_widget)
         
-        self.lbl_bat = QLabel("BAT: 0.00V")
+        self.lbl_bat = QLabel("BAT: 0.00V (0%)")
         self.lbl_rssi = QLabel("RSSI: 0")
         
         for lbl in [self.lbl_bat, self.lbl_rssi]:
@@ -101,7 +101,7 @@ class TelemetryRack(QWidget):
         self.meters['yaw'].set_value(rc[3])
         
         # Update labels
-        self.lbl_bat.setText(f"BAT: {state.get('battery', 0.0):.2f}V")
+        self.lbl_bat.setText(f"BAT: {state.get('battery', 0.0):.2f}V ({state.get('battery_percentage', 0)}%)")
         self.lbl_rssi.setText(f"RSSI: {state.get('rssi', 0)}")
         
         # Color battery label red if low
