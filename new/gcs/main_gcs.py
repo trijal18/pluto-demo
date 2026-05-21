@@ -10,6 +10,7 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 from utils.filters import LowPassFilter, OneEuroFilter
 from utils.gestures import HandChassis, HandChassisAdvanced
+import utils.constants as C
 
 from workers.vision_worker import VisionWorker
 from workers.drone_worker import DroneWorker
@@ -37,12 +38,12 @@ class RavenGCS(QMainWindow):
             self.setStyleSheet("background-color: #0a0a0a; color: #0ff;")
 
         # 1. Core Logic Components
-        self.chassis = HandChassisAdvanced(deadzone=0.02)
+        self.chassis = HandChassisAdvanced(clutch_threshold=C.CLUTCH_THRESHOLD, deadzone=C.DEADZONE)
         self.filters = {
-            'roll': OneEuroFilter(min_cutoff=1.0, beta=0.007),
-            'pitch': OneEuroFilter(min_cutoff=1.0, beta=0.007),
-            'yaw': OneEuroFilter(min_cutoff=1.0, beta=0.007),
-            'throttle': OneEuroFilter(min_cutoff=1.0, beta=0.007, initial_value=1000)
+            'roll': OneEuroFilter(min_cutoff=C.MC, beta=C.BETA),
+            'pitch': OneEuroFilter(min_cutoff=C.MC, beta=C.BETA),
+            'yaw': OneEuroFilter(min_cutoff=C.MC, beta=C.BETA),
+            'throttle': OneEuroFilter(min_cutoff=C.MC, beta=C.BETA, initial_value=1000)
         }
         self.last_throttle = 1000
         self.mode = "STANDBY" # STANDBY, GESTURE, MANUAL
@@ -140,10 +141,16 @@ class RavenGCS(QMainWindow):
                 dt, dp, dr, dy = self.chassis.get_controls(flight_landmarks)
                 
                 # Relative Control Logic (Matching legacy script)
-                target_r = clamp_rc(1500 + (dr * 2000))
-                target_p = clamp_rc(1500 + (dp * 2500))
-                target_t = clamp_rc(self.last_throttle + (dt * 1500))
-                target_y = clamp_rc(1500 + (dy * 2500))
+                target_r = clamp_rc(1500 + (dr * C.SENS_ROLL))
+                target_p = clamp_rc(1500 + (dp * C.SENS_PITCH))
+                target_t = clamp_rc(self.last_throttle + (dt * C.SENS_THROTTLE))
+                target_y = clamp_rc(1500 + (dy * C.SENS_YAW))
+                
+                # Apply Smoothing
+                target_r = self.filters['roll'].apply(target_r)
+                target_p = self.filters['pitch'].apply(target_p)
+                target_t = self.filters['throttle'].apply(target_t)
+                target_y = self.filters['yaw'].apply(target_y)
                 
                 # Only update state and last_throttle while clutched
                 self.drone_worker.set_rc(roll=target_r, pitch=target_p, throttle=target_t, yaw=target_y)

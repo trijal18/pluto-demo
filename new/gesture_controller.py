@@ -10,23 +10,10 @@ sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 from plutov2 import PlutoV2, CMD_NONE, CMD_TAKE_OFF, CMD_LAND
 from gcs.utils.filters import LowPassFilter, OneEuroFilter
 from gcs.utils.gestures import HandChassis, HandChassisAdvanced
+import gcs.utils.constants as C
 
 from mediapipe.tasks import python
 from mediapipe.tasks.python import vision
-
-# --- Constants ---
-MODEL_PATH = "hand_landmarker.task"
-ALPHA = 0.20  # Cinematic Smoothing
-
-# OneEuro Constants
-MC = 1.0
-BETA = 0.007
-
-# Sensitivities (Higher = faster response to smaller movements)
-SENS_THROTTLE = 1500.0  # Wrist Y movement
-SENS_ROLL     = 2000.0  # Wave slope
-SENS_PITCH    = 2500.0  # Lean Z-depth
-SENS_YAW      = 2500.0  # Screwdriver Z-depth
 
 def clamp_rc(val):
     return max(1000, min(2000, int(val)))
@@ -37,20 +24,20 @@ def main():
     drone.connect()
     
     # 2. Initialize MediaPipe (Two Hands)
-    base_options = python.BaseOptions(model_asset_path=MODEL_PATH)
+    base_options = python.BaseOptions(model_asset_path=C.MODEL_PATH)
     options = vision.HandLandmarkerOptions(
         base_options=base_options,
-        num_hands=2,
-        min_hand_detection_confidence=0.5,
-        min_tracking_confidence=0.5
+        num_hands=C.NUM_HANDS,
+        min_hand_detection_confidence=C.MIN_DETECTION_CONFIDENCE,
+        min_tracking_confidence=C.MIN_TRACKING_CONFIDENCE
     )
     
     # 3. Initialize Utils
-    chassis = HandChassisAdvanced(deadzone=0.02)
-    f_roll = OneEuroFilter(min_cutoff=MC, beta=BETA)
-    f_pitch = OneEuroFilter(min_cutoff=MC, beta=BETA)
-    f_yaw = OneEuroFilter(min_cutoff=MC, beta=BETA)
-    f_throttle = OneEuroFilter(min_cutoff=MC, beta=BETA, initial_value=1000)
+    chassis = HandChassisAdvanced(clutch_threshold=C.CLUTCH_THRESHOLD, deadzone=C.DEADZONE)
+    f_roll = OneEuroFilter(min_cutoff=C.MC, beta=C.BETA)
+    f_pitch = OneEuroFilter(min_cutoff=C.MC, beta=C.BETA)
+    f_yaw = OneEuroFilter(min_cutoff=C.MC, beta=C.BETA)
+    f_throttle = OneEuroFilter(min_cutoff=C.MC, beta=C.BETA, initial_value=1000)
     
     last_throttle = 1000
     is_armed = False
@@ -140,10 +127,10 @@ def main():
                         print("\n[CLUTCH] Engaged")
                     
                     dt, dp, dr, dy = chassis.get_controls(landmarks)
-                    target_rc[0] = clamp_rc(1500 + (dr * SENS_ROLL))
-                    target_rc[1] = clamp_rc(1500 + (dp * SENS_PITCH))
-                    target_rc[2] = clamp_rc(last_throttle + (dt * SENS_THROTTLE))
-                    target_rc[3] = clamp_rc(1500 + (dy * SENS_YAW))
+                    target_rc[0] = clamp_rc(1500 + (dr * C.SENS_ROLL))
+                    target_rc[1] = clamp_rc(1500 + (dp * C.SENS_PITCH))
+                    target_rc[2] = clamp_rc(last_throttle + (dt * C.SENS_THROTTLE))
+                    target_rc[3] = clamp_rc(1500 + (dy * C.SENS_YAW))
                 elif chassis.is_engaged:
                     chassis.is_engaged = False
                     print("\n[CLUTCH] Released")
