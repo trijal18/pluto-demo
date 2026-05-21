@@ -9,7 +9,7 @@ from PyQt6.QtCore import Qt, QTimer
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 from utils.filters import LowPassFilter, OneEuroFilter
-from utils.gestures import HandChassis, HandChassisAdvanced
+from utils.gestures import HandChassis, HandChassisAdvanced, HandChassisStandard
 import utils.constants as C
 
 from workers.vision_worker import VisionWorker
@@ -38,7 +38,7 @@ class RavenGCS(QMainWindow):
             self.setStyleSheet("background-color: #0a0a0a; color: #0ff;")
 
         # 1. Core Logic Components
-        self.chassis = HandChassisAdvanced(clutch_threshold=C.CLUTCH_THRESHOLD, deadzone=C.DEADZONE)
+        self.chassis = HandChassisStandard(clutch_threshold=C.CLUTCH_THRESHOLD, deadzone=C.DEADZONE)
         self.filters = {
             'roll': OneEuroFilter(min_cutoff=C.MC, beta=C.BETA),
             'pitch': OneEuroFilter(min_cutoff=C.MC, beta=C.BETA),
@@ -118,29 +118,50 @@ class RavenGCS(QMainWindow):
         self.viewport.update_landmarks(landmarks, handedness)
         
         if self.mode == "MANUAL":
-            return # Ignore gestures in manual mode
+            return 
 
         if landmarks and handedness:
-            clutch_active = self.chassis.get_clutch_state(landmarks, handedness)
+            # 1. Identify Hands (Mirrored View: Physical Right = Left, Physical Left = Right)
+            flight_idx = -1 # Physical Right Hand
+            clutch_idx = -1 # Physical Left Hand
+            
+            for i, h in enumerate(handedness):
+                if h[0].category_name == "Left": flight_idx = i
+                elif h[0].category_name == "Right": clutch_idx = i
+
+            # 2. Check for Discrete Gestures (Fist for Emergency Stop)
+            if flight_idx != -1:
+                if self.chassis.detect_stop(landmarks[flight_idx]):
+                    self.drone_worker.disarm()
+                    self.viewport.set_mode("EMERGENCY STOP")
+                    return
+
+            # 3. Handle Clutch & Decoupled Control
+            clutch_active = False
+            if clutch_idx != -1:
+                clutch_active = self.chassis.get_clutch_state([landmarks[clutch_idx]], [[handedness[clutch_idx][0]]])
+                
+                # Takeoff / Land from Clutch Hand
+                if self.chassis.detect_takeoff(landmarks[clutch_idx]):
+                    self.drone_worker.takeoff()
+                elif self.chassis.detect_land(landmarks[clutch_idx]):
+                    self.drone_worker.land()
+
             self.viewport.set_clutch(clutch_active)
             
-            flight_idx = -1
-            for i, h in enumerate(handedness):
-                if h[0].category_name == "Left":
-                    flight_idx = i
-                    break
-            
-            if flight_idx != -1 and clutch_active:
+            if flight_idx != -1 and clutch_active and clutch_idx != -1:
                 self.mode = "GESTURE"
                 self.viewport.set_mode(self.mode)
                 
-                flight_landmarks = landmarks[flight_idx]
+                flight_lm = landmarks[flight_idx]
+                clutch_lm = landmarks[clutch_idx]
+
                 if not self.chassis.is_engaged:
-                    self.chassis.set_neutral(flight_landmarks)
+                    self.chassis.set_neutral(flight_lm, clutch_lm)
                 
-                dt, dp, dr, dy = self.chassis.get_controls(flight_landmarks)
+                dr, dp, dt, dy = self.chassis.get_decoupled_controls(flight_lm, clutch_lm)
                 
-                # Relative Control Logic (Matching legacy script)
+                # Scale to RC
                 target_r = clamp_rc(1500 + (dr * C.SENS_ROLL))
                 target_p = clamp_rc(1500 + (dp * C.SENS_PITCH))
                 target_t = clamp_rc(self.last_throttle + (dt * C.SENS_THROTTLE))
@@ -152,7 +173,6 @@ class RavenGCS(QMainWindow):
                 target_t = self.filters['throttle'].apply(target_t)
                 target_y = self.filters['yaw'].apply(target_y)
                 
-                # Only update state and last_throttle while clutched
                 self.drone_worker.set_rc(roll=target_r, pitch=target_p, throttle=target_t, yaw=target_y)
                 self.last_throttle = target_t
                 self.target_display.update_targets(target_r, target_p, target_t, target_y)
@@ -161,7 +181,6 @@ class RavenGCS(QMainWindow):
                 if self.mode == "GESTURE":
                     self.mode = "STANDBY"
                     self.viewport.set_mode(self.mode)
-                    # Reset neutral axes, keep throttle at last known position
                     self.drone_worker.set_rc(roll=1500, pitch=1500, yaw=1500, throttle=self.last_throttle)
                     self.target_display.update_targets(1500, 1500, self.last_throttle, 1500)
         else:

@@ -33,11 +33,13 @@ def main():
     )
     
     # 3. Initialize Utils
-    chassis = HandChassisAdvanced(clutch_threshold=C.CLUTCH_THRESHOLD, deadzone=C.DEADZONE)
-    f_roll = OneEuroFilter(min_cutoff=C.MC, beta=C.BETA)
-    f_pitch = OneEuroFilter(min_cutoff=C.MC, beta=C.BETA)
-    f_yaw = OneEuroFilter(min_cutoff=C.MC, beta=C.BETA)
-    f_throttle = OneEuroFilter(min_cutoff=C.MC, beta=C.BETA, initial_value=1000)
+    chassis = HandChassisStandard(clutch_threshold=C.CLUTCH_THRESHOLD, deadzone=C.DEADZONE)
+    filters = {
+        'roll': OneEuroFilter(min_cutoff=C.MC, beta=C.BETA),
+        'pitch': OneEuroFilter(min_cutoff=C.MC, beta=C.BETA),
+        'yaw': OneEuroFilter(min_cutoff=C.MC, beta=C.BETA),
+        'throttle': OneEuroFilter(min_cutoff=C.MC, beta=C.BETA, initial_value=1000)
+    }
     
     last_throttle = 1000
     is_armed = False
@@ -48,8 +50,9 @@ def main():
     print("="*40)
     print("CONTROLS:")
     print(" [A] Arm/Disarm | [L] Land | [Q] Quit")
-    print(" [LEFT]  - 'Okay' Pinch to Clutch")
-    print(" [RIGHT] - Super-Triangle Flight")
+    print(" [LEFT HAND]  - Throttle & Clutch ('Okay')")
+    print(" [RIGHT HAND] - Steering (Roll/Pitch/Yaw)")
+    print(" GESTURES: Thumbs Up=Takeoff | Thumbs Down=Land | Fist=STOP")
     print("="*40 + "\n")
 
     with vision.HandLandmarker.create_from_options(options) as landmarker:
@@ -68,65 +71,56 @@ def main():
             clutch_active = False
 
             if result.hand_landmarks:
-                # 1. Check Clutch 
-                clutch_active = chassis.get_clutch_state(result.hand_landmarks, result.handedness)
-                
-                # 2. Find Flight Hand 
-                right_idx = -1
+                flight_idx = -1
+                clutch_idx = -1
                 for i, hand_info in enumerate(result.handedness):
-                    if hand_info[0].category_name == "Left":
-                        right_idx = i
-                        break
-                
+                    if hand_info[0].category_name == "Left": flight_idx = i
+                    elif hand_info[0].category_name == "Right": clutch_idx = i
+
                 # Visual Feedback for All Hands
                 for i, landmarks in enumerate(result.hand_landmarks):
                     side = result.handedness[i][0].category_name
+                    color = (255, 0, 255) if side == "Left" else (0, 255, 0)
+                    label = "RIGHT (STEER)" if side == "Left" else "LEFT (ALT/CLUTCH)"
                     
-                    if side == "Left":
-                        color = (255, 0, 255)
-                        label = "RIGHT (FLIGHT)"
-                    else:
- -                       color = (0, 255, 0)
-                        label = "LEFT (CLUTCH)"
+                    # 1. Discrete Gestures
+                    if side == "Left" and chassis.detect_stop(landmarks):
+                        color = (0, 0, 255)
+                        label = "!!! STOP (FIST) !!!"
+                        drone.disarm()
+                        is_armed = False
+                    
+                    if side == "Right":
+                        if chassis.detect_takeoff(landmarks):
+                            color = (0, 255, 255)
+                            label = ">>> TAKEOFF <<<"
+                            drone.takeoff()
+                        elif chassis.detect_land(landmarks):
+                            color = (0, 165, 255)
+                            label = "<<< LANDING >>>"
+                            drone.land()
 
-                    # 0. Draw Label
+                    # Draw Skeleton
                     wrist_pt = (int(landmarks[0].x * w), int(landmarks[0].y * h) - 20)
                     cv2.putText(frame, label, wrist_pt, cv2.FONT_HERSHEY_SIMPLEX, 0.7, color, 2)
-                    
-                    # 1. Full Skeleton (Thin)
-                    connections = [
-                        (0,1),(1,2),(2,3),(3,4), (0,5),(5,6),(6,7),(7,8),
-                        (5,9),(9,10),(10,11),(11,12), (9,13),(13,14),(14,15),(15,16),
-                        (13,17),(17,18),(18,19),(19,20), (0,17)
-                    ]
-                    for a, b in connections:
+                    for a, b in [(0,1),(1,2),(2,3),(3,4), (0,5),(5,6),(6,7),(7,8), (9,10),(10,11),(11,12), (13,14),(14,15),(15,16), (17,18),(18,19),(19,20), (0,17), (5,9), (9,13), (13,17)]:
                         pt1 = (int(landmarks[a].x * w), int(landmarks[a].y * h))
                         pt2 = (int(landmarks[b].x * w), int(landmarks[b].y * h))
                         cv2.line(frame, pt1, pt2, color, 1)
 
-                    if side == "Left": # Physical Right
-                        # Highlight Super-Triangle (Wrist, Thumb Tip, Pinky Tip)
-                        pts = [0, 4, 20] 
-                        tri_pts = [ (int(landmarks[p].x * w), int(landmarks[p].y * h)) for p in pts ]
-                        for pt in tri_pts: cv2.circle(frame, pt, 8, (0, 255, 255), -1)
-                        cv2.line(frame, tri_pts[0], tri_pts[1], (0, 255, 255), 2)
-                        cv2.line(frame, tri_pts[1], tri_pts[2], (0, 255, 255), 2)
-                        cv2.line(frame, tri_pts[2], tri_pts[0], (0, 255, 255), 2)
-                    
-                    if side == "Right": # Physical Left
-                        # Highlight Clutch Pinch
-                        t_tip = (int(landmarks[4].x * w), int(landmarks[4].y * h))
-                        i_tip = (int(landmarks[8].x * w), int(landmarks[8].y * h))
-                        cv2.circle(frame, t_tip, 8, (0, 255, 0), -1)
-                        cv2.circle(frame, i_tip, 8, (0, 255, 0), -1)
+                # 2. Control Logic
+                if clutch_idx != -1:
+                    clutch_active = chassis.get_clutch_state([result.hand_landmarks[clutch_idx]], [[result.handedness[clutch_idx][0]]])
                 
-                if right_idx != -1 and clutch_active:
-                    landmarks = result.hand_landmarks[right_idx]
+                if flight_idx != -1 and clutch_idx != -1 and clutch_active:
+                    flight_lm = result.hand_landmarks[flight_idx]
+                    clutch_lm = result.hand_landmarks[clutch_idx]
+                    
                     if not chassis.is_engaged:
-                        chassis.set_neutral(landmarks)
+                        chassis.set_neutral(flight_lm, clutch_lm)
                         print("\n[CLUTCH] Engaged")
                     
-                    dt, dp, dr, dy = chassis.get_controls(landmarks)
+                    dr, dp, dt, dy = chassis.get_decoupled_controls(flight_lm, clutch_lm)
                     target_rc[0] = clamp_rc(1500 + (dr * C.SENS_ROLL))
                     target_rc[1] = clamp_rc(1500 + (dp * C.SENS_PITCH))
                     target_rc[2] = clamp_rc(last_throttle + (dt * C.SENS_THROTTLE))
@@ -136,10 +130,10 @@ def main():
                     print("\n[CLUTCH] Released")
 
             # Apply Smoothing and Update Drone
-            roll = f_roll.apply(target_rc[0])
-            pitch = f_pitch.apply(target_rc[1])
-            throttle = f_throttle.apply(target_rc[2])
-            yaw = f_yaw.apply(target_rc[3])
+            roll = filters['roll'].apply(target_rc[0])
+            pitch = filters['pitch'].apply(target_rc[1])
+            throttle = filters['throttle'].apply(target_rc[2])
+            yaw = filters['yaw'].apply(target_rc[3])
             
             drone.set_rc(roll=roll, pitch=pitch, throttle=throttle, yaw=yaw)
             if clutch_active: last_throttle = throttle

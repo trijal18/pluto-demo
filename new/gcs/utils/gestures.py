@@ -92,3 +92,66 @@ class HandChassisAdvanced(HandChassis):
         dy = self._apply_deadzone(dy)
         
         return dt, dp, dr, dy
+
+class HandChassisStandard(HandChassisAdvanced):
+    """
+    Industry-Standard Decoupled Control:
+    - Right Hand: Pitch (slope), Roll (slope), Yaw (rotation).
+    - Left Hand: Throttle (height) + Clutch.
+    - Discrete Gestures: Takeoff (Thumbs Up), Land (Thumbs Down), Stop (Fist).
+    """
+    def __init__(self, clutch_threshold=0.05, deadzone=0.02):
+        super().__init__(clutch_threshold, deadzone)
+        self.neutral_throttle_y = 0.0
+
+    def set_neutral(self, flight_hand, clutch_hand):
+        """Captures neutral points for both hands."""
+        super().set_neutral(flight_hand)
+        if clutch_hand:
+            self.neutral_throttle_y = clutch_hand[0].y # Left Wrist Y
+
+    def _calculate_raw_pitch(self, lm):
+        # Slope-based Pitch: Vertical distance from Wrist (0) to Middle Finger Base (9)
+        # Higher = Leaning forward (9 moves up/smaller Y)
+        return lm[0].y - lm[9].y
+
+    def get_decoupled_controls(self, flight_hand, clutch_hand):
+        """Returns R, P, T, Y using the two-handed decoupled model."""
+        if not self.is_engaged:
+            return 0.0, 0.0, 0.0, 0.0
+
+        # Right Hand: P, R, Y
+        pitch_delta = self._calculate_raw_pitch(flight_hand) - self.neutral_pitch
+        roll_delta = self._calculate_raw_roll(flight_hand) - self.neutral_roll
+        yaw_delta = self._calculate_raw_yaw(flight_hand) - self.neutral_yaw
+
+        # Left Hand: Throttle
+        # If Left wrist is higher than its neutral Y, throttle up.
+        throttle_delta = 0.0
+        if clutch_hand:
+            throttle_delta = self.neutral_throttle_y - clutch_hand[0].y
+
+        return (
+            self._apply_deadzone(roll_delta),
+            self._apply_deadzone(pitch_delta),
+            throttle_delta, # No deadzone on throttle for smooth climbing
+            self._apply_deadzone(yaw_delta)
+        )
+
+    def detect_takeoff(self, lm):
+        # Thumbs up: Thumb (4) is high, other fingers are curled (below their bases)
+        thumb_up = lm[4].y < lm[3].y < lm[2].y
+        fingers_curled = all(lm[i].y > lm[i-3].y for i in [8, 12, 16, 20])
+        return thumb_up and fingers_curled
+
+    def detect_land(self, lm):
+        # Thumbs down: Thumb (4) is low, other fingers are curled
+        thumb_down = lm[4].y > lm[3].y > lm[2].y
+        fingers_curled = all(lm[i].y < lm[i-3].y for i in [8, 12, 16, 20])
+        return thumb_down and fingers_curled
+
+    def detect_stop(self, lm):
+        # Fist: All fingertips (4, 8, 12, 16, 20) are very close to the palm base (0)
+        tips = [8, 12, 16, 20]
+        avg_dist = sum(math.sqrt((lm[i].x-lm[0].x)**2 + (lm[i].y-lm[0].y)**2) for i in tips) / 4.0
+        return avg_dist < 0.12 # Tight fist threshold
