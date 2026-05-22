@@ -1,136 +1,359 @@
 import math
 
+
 class SimpleOneHandController:
     """
-    Translates simple one-handed MediaPipe gestures into discrete drone commands
-    and target RC values.
+    One-Hand Gesture Drone Controller
+
+    Gesture Map
+    ------------------------------------------------
+    👍 Thumbs Up              -> ARM / TAKEOFF
+    ✊ Closed Fist            -> DISARM
+
+    ☝️ Index Up               -> UP
+    👇 Index Down             -> DOWN
+
+    ✌️ Index + Middle         -> FORWARD
+    🤟 Index + Middle + Ring -> BACKWARD
+
+    🤏 Thumb + Index          -> LEFT
+    🤘 Index + Pinky          -> RIGHT
+
+    🖐️ Four Fingers Wave      -> YAW LEFT / RIGHT
     """
-    def __init__(self, finger_threshold=1.15, tilt_threshold=0.08):
+
+    def __init__(
+        self,
+        finger_threshold=1.15,
+        tilt_threshold=0.08
+    ):
         self.finger_threshold = finger_threshold
         self.tilt_threshold = tilt_threshold
-        self.is_armed = False
 
+    # =========================================================
+    # Utility Distance Function
+    # =========================================================
+    def distance(self, pt1, pt2):
+        return math.sqrt(
+            (pt1.x - pt2.x) ** 2 +
+            (pt1.y - pt2.y) ** 2 +
+            (pt1.z - pt2.z) ** 2
+        )
+
+    # =========================================================
+    # Finger Extension Detection
+    # =========================================================
     def get_finger_extensions(self, landmarks):
         """
-        Returns a list of 5 booleans indicating if each finger is extended.
-        Indices: 0=Thumb, 1=Index, 2=Middle, 3=Ring, 4=Pinky
+        Returns:
+            [thumb, index, middle, ring, pinky]
+
+        True  = extended
+        False = curled
         """
+
         extended = []
-        
-        def d(pt1, pt2):
-            return math.sqrt((pt1.x - pt2.x)**2 + (pt1.y - pt2.y)**2 + (pt1.z - pt2.z)**2)
-            
+
         wrist = landmarks[0]
-        
-        # Thumb check: compare distance from thumb tip (4) to index MCP (5)
-        # against thumb MCP (2) to index MCP (5)
-        thumb_dist = d(landmarks[4], landmarks[5])
-        thumb_ref = d(landmarks[2], landmarks[5])
-        is_thumb_ext = thumb_dist > thumb_ref * 1.15
-        extended.append(is_thumb_ext)
-        
-        # Index (8 vs 5)
-        is_index_ext = d(landmarks[8], wrist) > d(landmarks[5], wrist) * self.finger_threshold
-        extended.append(is_index_ext)
-        
-        # Middle (12 vs 9)
-        is_middle_ext = d(landmarks[12], wrist) > d(landmarks[9], wrist) * self.finger_threshold
-        extended.append(is_middle_ext)
-        
-        # Ring (16 vs 13)
-        is_ring_ext = d(landmarks[16], wrist) > d(landmarks[13], wrist) * self.finger_threshold
-        extended.append(is_ring_ext)
-        
-        # Pinky (20 vs 17)
-        is_pinky_ext = d(landmarks[20], wrist) > d(landmarks[17], wrist) * self.finger_threshold
-        extended.append(is_pinky_ext)
-        
+
+        # -----------------------------------------------------
+        # THUMB
+        # -----------------------------------------------------
+        thumb_tip = landmarks[4]
+        thumb_mcp = landmarks[2]
+        index_mcp = landmarks[5]
+
+        thumb_dist = self.distance(thumb_tip, index_mcp)
+        thumb_ref = self.distance(thumb_mcp, index_mcp)
+
+        thumb_extended = (
+            thumb_dist > thumb_ref * 1.15
+        )
+
+        extended.append(thumb_extended)
+
+        # -----------------------------------------------------
+        # OTHER FINGERS
+        # -----------------------------------------------------
+        finger_pairs = [
+            (8, 5),    # Index
+            (12, 9),   # Middle
+            (16, 13),  # Ring
+            (20, 17)   # Pinky
+        ]
+
+        for tip_idx, mcp_idx in finger_pairs:
+
+            tip = landmarks[tip_idx]
+            mcp = landmarks[mcp_idx]
+
+            tip_dist = self.distance(tip, wrist)
+            mcp_dist = self.distance(mcp, wrist)
+
+            is_extended = (
+                tip_dist >
+                mcp_dist * self.finger_threshold
+            )
+
+            extended.append(is_extended)
+
         return extended
 
-    def get_controls(self, landmarks, handedness_label):
+    # =========================================================
+    # Main Gesture Controller
+    # =========================================================
+    def get_controls(self, landmarks, handedness_label="Right"):
         """
-        Analyzes the hand state and returns:
-          - command: "ARM_TAKEOFF", "DISARM", "HOVER", "UP", "DOWN", "LEFT", "RIGHT", "FORWARD", "BACKWARD", "YAW_LEFT", "YAW_RIGHT"
-          - rc_values: tuple (roll, pitch, throttle, yaw)
+        Returns:
+            command, (roll, pitch, throttle, yaw)
+
+        RC Neutral:
+            1500
+
+        RC Low:
+            1350
+
+        RC High:
+            1650
         """
+
         extended = self.get_finger_extensions(landmarks)
-        ext_count = extended.count(True)
-        
-        # Default neutral values
-        roll, pitch, throttle, yaw = 1500, 1500, 1500, 1500
+
+        thumb, index, middle, ring, pinky = extended
+
+        # -----------------------------------------------------
+        # Default Neutral RC
+        # -----------------------------------------------------
+        roll = 1500
+        pitch = 1500
+        throttle = 1500
+        yaw = 1500
+
         command = "HOVER"
-        
-        # 1. Fist (0 fingers extended) -> Disarm
-        # (We also check if index, middle, ring, pinky are all curled for safety)
-        if ext_count == 0 or not any(extended[1:]):
+
+        # =====================================================
+        # 1. DISARM -> Closed Fist
+        # =====================================================
+        if not any(extended):
+
             command = "DISARM"
-            return command, (1500, 1500, 1300, 1500) # Throttled down
-            
-        # 2. Thumbs Up / Down (Only Thumb extended)
-        if extended[0] and not any(extended[1:]):
-            # Check pointing direction of thumb: tip 4 vs joint 3 vs joint 2
-            is_up = landmarks[4].y < landmarks[3].y < landmarks[2].y
-            is_down = landmarks[4].y > landmarks[3].y > landmarks[2].y
+
+            return command, (
+                1500,
+                1500,
+                1300,
+                1500
+            )
+
+        # =====================================================
+        # 2. ARM / TAKEOFF -> Thumbs Up
+        # =====================================================
+        if (
+            thumb and
+            not index and
+            not middle and
+            not ring and
+            not pinky
+        ):
+
+            # Thumb pointing upward
+            is_up = (
+                landmarks[4].y <
+                landmarks[3].y <
+                landmarks[2].y
+            )
+
             if is_up:
+
                 command = "ARM_TAKEOFF"
-                # Keep neutral RC values, the main application will trigger drone arming & takeoff
-                return command, (1500, 1500, 1500, 1500)
-            elif is_down:
-                command = "DOWN"
-                return command, (1500, 1500, 1350, 1500) # Descend/Land
-        
-        # 3. 1 Finger Extended (Index only) -> Up, Down, Left, Right
-        if extended[1] and not any(extended[2:]):
-            # Vector from Index MCP (5) to Index Tip (8)
-            dx = landmarks[8].x - landmarks[5].x
-            dy = landmarks[8].y - landmarks[5].y
-            
-            if abs(dy) > abs(dx):
-                if dy < 0:
-                    command = "UP"
-                    throttle = 1650
-                else:
-                    command = "DOWN"
-                    throttle = 1350
+
+                return command, (
+                    1500,
+                    1500,
+                    1500,
+                    1500
+                )
+
+        # =====================================================
+        # 3. INDEX ONLY -> UP / DOWN
+        # =====================================================
+        if (
+            index and
+            not thumb and
+            not middle and
+            not ring and
+            not pinky
+        ):
+
+            dy = (
+                landmarks[8].y -
+                landmarks[5].y
+            )
+
+            # Smaller Y = upward on screen
+            if dy < 0:
+
+                command = "UP"
+
+                throttle = 1650
+
             else:
-                if dx < 0:
-                    command = "LEFT"
-                    roll = 1350
-                else:
-                    command = "RIGHT"
-                    roll = 1650
-                    
-            return command, (roll, pitch, throttle, yaw)
-            
-        # 4. 2 Fingers Extended (Index + Middle) -> Go Forward
-        if extended[1] and extended[2] and not extended[3] and not extended[4]:
+
+                command = "DOWN"
+
+                throttle = 1350
+
+            return command, (
+                roll,
+                pitch,
+                throttle,
+                yaw
+            )
+
+        # =====================================================
+        # 4. TWO FINGERS -> FORWARD
+        # Index + Middle
+        # =====================================================
+        if (
+            index and
+            middle and
+            not ring and
+            not pinky
+        ):
+
             command = "FORWARD"
+
             pitch = 1650
-            return command, (roll, pitch, throttle, yaw)
-            
-        # 5. 3 Fingers Extended (Index + Middle + Ring) -> Go Backward
-        if extended[1] and extended[2] and extended[3] and not extended[4]:
+
+            return command, (
+                roll,
+                pitch,
+                throttle,
+                yaw
+            )
+
+        # =====================================================
+        # 5. THREE FINGERS -> BACKWARD
+        # Index + Middle + Ring
+        # =====================================================
+        if (
+            index and
+            middle and
+            ring and
+            not pinky
+        ):
+
             command = "BACKWARD"
+
             pitch = 1350
-            return command, (roll, pitch, throttle, yaw)
-            
-        # 6. 5 Fingers Extended (Palm) -> Hover or Yaw Wave
-        if extended[1] and extended[2] and extended[3] and extended[4]:
-            # Roll tilt calculation
-            tilt = landmarks[20].y - landmarks[4].y
-            # If hand is physical left (MediaPipe "Right"), invert the tilt
+
+            return command, (
+                roll,
+                pitch,
+                throttle,
+                yaw
+            )
+
+        # =====================================================
+        # 6. THUMB + INDEX -> LEFT
+        # =====================================================
+        if (
+            thumb and
+            index and
+            not middle and
+            not ring and
+            not pinky
+        ):
+
+            command = "LEFT"
+
+            roll = 1350
+
+            return command, (
+                roll,
+                pitch,
+                throttle,
+                yaw
+            )
+
+        # =====================================================
+        # 7. INDEX + PINKY -> RIGHT
+        # =====================================================
+        if (
+            index and
+            pinky and
+            not middle and
+            not ring
+        ):
+
+            command = "RIGHT"
+
+            roll = 1650
+
+            return command, (
+                roll,
+                pitch,
+                throttle,
+                yaw
+            )
+
+        # =====================================================
+        # 8. FOUR FINGERS -> YAW
+        # (No thumb)
+        # =====================================================
+        if (
+            index and
+            middle and
+            ring and
+            pinky and
+            not thumb
+        ):
+
+            # Hand tilt estimate
+            tilt = (
+                landmarks[20].y -
+                landmarks[8].y
+            )
+
+            # Compensate handedness
             if handedness_label == "Right":
                 tilt = -tilt
-                
+
+            # -----------------------------
+            # YAW RIGHT
+            # -----------------------------
             if tilt > self.tilt_threshold:
+
                 command = "YAW_RIGHT"
+
                 yaw = 1650
+
+            # -----------------------------
+            # YAW LEFT
+            # -----------------------------
             elif tilt < -self.tilt_threshold:
+
                 command = "YAW_LEFT"
+
                 yaw = 1350
+
             else:
+
                 command = "HOVER"
-                
-            return command, (roll, pitch, throttle, yaw)
-            
-        return command, (roll, pitch, throttle, yaw)
+
+            return command, (
+                roll,
+                pitch,
+                throttle,
+                yaw
+            )
+
+        # =====================================================
+        # Default Hover
+        # =====================================================
+        return command, (
+            roll,
+            pitch,
+            throttle,
+            yaw
+        )
