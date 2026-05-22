@@ -35,8 +35,8 @@ class LowPassFilter:
 class HandChassis:
     def __init__(self, clutch_threshold=0.05):
         self.clutch_threshold = clutch_threshold
-        self.neutral_y = 0.0
-        self.neutral_pitch = 0.0
+        self.neutral_throttle_y = 0.0
+        self.neutral_pitch_y = 0.0
         self.neutral_roll = 0.0
         self.neutral_yaw = 0.0
         self.is_engaged = False
@@ -51,40 +51,44 @@ class HandChassis:
                 return dist < self.clutch_threshold
         return False
 
-    def set_neutral(self, landmarks):
-        self.neutral_y = landmarks[0].y
-        self.neutral_pitch = self._calculate_raw_pitch(landmarks)
-        self.neutral_roll = self._calculate_raw_roll(landmarks)
-        self.neutral_yaw = self._calculate_raw_yaw(landmarks)
+    def set_neutral(self, flight_hand, clutch_hand):
+        if flight_hand:
+            self.neutral_pitch_y = flight_hand[0].y # Right Wrist Y for Pitch
+            self.neutral_roll = self._calculate_raw_roll(flight_hand) # Right wave slope for Roll
+        if clutch_hand:
+            self.neutral_throttle_y = clutch_hand[0].y # Left Wrist Y for Throttle
+            self.neutral_yaw = self._calculate_raw_roll(clutch_hand) # Left wave slope for Yaw
         self.is_engaged = True
-
-    def _calculate_raw_pitch(self, lm):
-        mid_z = (lm[4].z + lm[20].z) / 2.0
-        return mid_z - lm[0].z
 
     def _calculate_raw_roll(self, lm):
         return lm[20].y - lm[4].y
 
-    def _calculate_raw_yaw(self, lm):
-        return lm[4].z - lm[20].z
-
-    def get_controls(self, landmarks):
-        if not self.is_engaged: return 0.0, 0.0, 0.0, 0.0
-        throttle_delta = self.neutral_y - landmarks[0].y
-        pitch_delta = self._calculate_raw_pitch(landmarks) - self.neutral_pitch
-        roll_delta = self._calculate_raw_roll(landmarks) - self.neutral_roll
-        yaw_delta = self._calculate_raw_yaw(landmarks) - self.neutral_yaw
-        return throttle_delta, pitch_delta, roll_delta, yaw_delta
+    def get_decoupled_controls(self, flight_hand, clutch_hand):
+        if not self.is_engaged or not flight_hand:
+            return 0.0, 0.0, 0.0, 0.0
+        
+        # Right hand: Pitch & Roll
+        pitch_delta = self.neutral_pitch_y - flight_hand[0].y
+        roll_delta = self._calculate_raw_roll(flight_hand) - self.neutral_roll
+        
+        # Left hand: Throttle & Yaw
+        throttle_delta = 0.0
+        yaw_delta = 0.0
+        if clutch_hand:
+            throttle_delta = self.neutral_throttle_y - clutch_hand[0].y
+            yaw_delta = self._calculate_raw_roll(clutch_hand) - self.neutral_yaw
+            
+        return roll_delta, pitch_delta, throttle_delta, yaw_delta
 
 # --- Constants ---
 MODEL_PATH = "hand_landmarker.task"
 ALPHA = 0.20  # Cinematic Smoothing
 
 # Sensitivities (Higher = faster response to smaller movements)
-SENS_THROTTLE = 1500.0  # Wrist Y movement
-SENS_ROLL     = 2000.0  # Wave slope
-SENS_PITCH    = 2500.0  # Lean Z-depth
-SENS_YAW      = 2500.0  # Screwdriver Z-depth
+SENS_THROTTLE = 1200.0  # Wrist Y movement
+SENS_ROLL     = 2500.0  # Wave slope
+SENS_PITCH    = 3000.0  # Wrist Y translation
+SENS_YAW      = 2500.0  # Wave slope (Left hand)
 
 def clamp_rc(val):
     return max(1000, min(2000, int(val)))
@@ -95,7 +99,9 @@ def main():
     drone.connect()
 
     # 2. Initialize MediaPipe (Two Hands)
-    base_options = python.BaseOptions(model_asset_path=MODEL_PATH)
+    import os
+    model_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), MODEL_PATH)
+    base_options = python.BaseOptions(model_asset_path=model_path)
     options = vision.HandLandmarkerOptions(
         base_options=base_options,
         num_hands=2,
@@ -142,12 +148,14 @@ def main():
                 # 1. Check Clutch
                 clutch_active = chassis.get_clutch_state(result.hand_landmarks, result.handedness)
 
-                # 2. Find Flight Hand
+                # 2. Find Flight Hand (Physical Right, MediaPipe "Left") and Clutch Hand (Physical Left, MediaPipe "Right")
                 right_idx = -1
+                left_idx = -1
                 for i, hand_info in enumerate(result.handedness):
                     if hand_info[0].category_name == "Left":
                         right_idx = i
-                        break
+                    elif hand_info[0].category_name == "Right":
+                        left_idx = i
 
                 # Visual Feedback for All Hands
                 for i, landmarks in enumerate(result.hand_landmarks):
@@ -192,12 +200,14 @@ def main():
                         cv2.circle(frame, i_tip, 8, (0, 255, 0), -1)
 
                 if right_idx != -1 and clutch_active:
-                    landmarks = result.hand_landmarks[right_idx]
+                    flight_hand = result.hand_landmarks[right_idx]
+                    clutch_hand = result.hand_landmarks[left_idx] if left_idx != -1 else None
+                    
                     if not chassis.is_engaged:
-                        chassis.set_neutral(landmarks)
+                        chassis.set_neutral(flight_hand, clutch_hand)
                         print("\n[CLUTCH] Engaged")
 
-                    dt, dp, dr, dy = chassis.get_controls(landmarks)
+                    dr, dp, dt, dy = chassis.get_decoupled_controls(flight_hand, clutch_hand)
                     target_rc[0] = clamp_rc(1500 + (dr * SENS_ROLL))
                     target_rc[1] = clamp_rc(1500 + (dp * SENS_PITCH))
                     target_rc[2] = clamp_rc(last_throttle + (dt * SENS_THROTTLE))

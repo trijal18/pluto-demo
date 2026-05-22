@@ -95,41 +95,42 @@ class HandChassisAdvanced(HandChassis):
 
 class HandChassisStandard(HandChassisAdvanced):
     """
-    Industry-Standard Decoupled Control:
-    - Right Hand: Pitch (slope), Roll (slope), Yaw (rotation).
-    - Left Hand: Throttle (height) + Clutch.
+    Industry-Standard Symmetrical Decoupled Control (Approach A):
+    - Right Hand: Pitch (vertical wrist translation), Roll (wave tilt slope).
+    - Left Hand: Throttle (vertical wrist translation), Yaw (wave tilt slope) + Clutch.
     - Discrete Gestures: Takeoff (Thumbs Up), Land (Thumbs Down), Stop (Fist).
     """
     def __init__(self, clutch_threshold=0.05, deadzone=0.02):
         super().__init__(clutch_threshold, deadzone)
         self.neutral_throttle_y = 0.0
+        self.neutral_pitch_y = 0.0
+        self.neutral_yaw = 0.0
 
     def set_neutral(self, flight_hand, clutch_hand):
         """Captures neutral points for both hands."""
-        super().set_neutral(flight_hand)
+        if flight_hand:
+            self.neutral_pitch_y = flight_hand[0].y # Right Wrist Y for Pitch
+            self.neutral_roll = self._calculate_raw_roll(flight_hand) # Right wave tilt for Roll
         if clutch_hand:
-            self.neutral_throttle_y = clutch_hand[0].y # Left Wrist Y
-
-    def _calculate_raw_pitch(self, lm):
-        # Slope-based Pitch: Vertical distance from Wrist (0) to Middle Finger Base (9)
-        # Higher = Leaning forward (9 moves up/smaller Y)
-        return lm[0].y - lm[9].y
+            self.neutral_throttle_y = clutch_hand[0].y # Left Wrist Y for Throttle
+            self.neutral_yaw = self._calculate_raw_roll(clutch_hand) # Left wave tilt for Yaw
+        self.is_engaged = True
 
     def get_decoupled_controls(self, flight_hand, clutch_hand):
         """Returns R, P, T, Y using the two-handed decoupled model."""
-        if not self.is_engaged:
+        if not self.is_engaged or not flight_hand:
             return 0.0, 0.0, 0.0, 0.0
 
-        # Right Hand: P, R, Y
-        pitch_delta = self._calculate_raw_pitch(flight_hand) - self.neutral_pitch
+        # Right Hand: Pitch & Roll
+        pitch_delta = self.neutral_pitch_y - flight_hand[0].y
         roll_delta = self._calculate_raw_roll(flight_hand) - self.neutral_roll
-        yaw_delta = self._calculate_raw_yaw(flight_hand) - self.neutral_yaw
 
-        # Left Hand: Throttle
-        # If Left wrist is higher than its neutral Y, throttle up.
+        # Left Hand: Throttle & Yaw
         throttle_delta = 0.0
+        yaw_delta = 0.0
         if clutch_hand:
             throttle_delta = self.neutral_throttle_y - clutch_hand[0].y
+            yaw_delta = self._calculate_raw_roll(clutch_hand) - self.neutral_yaw
 
         return (
             self._apply_deadzone(roll_delta),

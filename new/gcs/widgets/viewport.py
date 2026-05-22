@@ -105,23 +105,128 @@ class ViewportWidget(QWidget):
 
     def _draw_landmarks(self, painter, rect):
         for i, (lm_list, hand) in enumerate(zip(self.landmarks, self.handedness)):
-            label = hand[0].category_name
-            color = QColor(0, 255, 255, 200) if label == "Left" else QColor(0, 255, 100, 200)
+            label = hand[0].category_name # "Left" (Physical Right) or "Right" (Physical Left)
+            
+            # Determine color theme based on hand state
+            if label == "Right": # Physical Left Hand (Clutch / Throttle / Yaw)
+                color = QColor(0, 255, 100) if self.clutch_active else QColor(255, 170, 0)
+            else: # Physical Right Hand (Flight: Pitch / Roll)
+                color = QColor(0, 255, 255) if self.clutch_active else QColor(0, 180, 200, 150)
+                
+            # 1. Bounding Box & Corner Brackets Calculation
+            xs = [rect.x() + int(pt.x * rect.width()) for pt in lm_list]
+            ys = [rect.y() + int(pt.y * rect.height()) for pt in lm_list]
+            min_x, max_x = min(xs), max(xs)
+            min_y, max_y = min(ys), max(ys)
+            
+            # Add padding
+            padding = 20
+            min_x = max(rect.x(), min_x - padding)
+            max_x = min(rect.x() + rect.width(), max_x + padding)
+            min_y = max(rect.y(), min_y - padding)
+            max_y = min(rect.y() + rect.height(), max_y + padding)
+            
+            # Draw military L-brackets
+            painter.setPen(QPen(color, 2))
+            L = 15 # Bracket line length
+            # Top-Left
+            painter.drawLine(min_x, min_y, min_x + L, min_y)
+            painter.drawLine(min_x, min_y, min_x, min_y + L)
+            # Top-Right
+            painter.drawLine(max_x, min_y, max_x - L, min_y)
+            painter.drawLine(max_x, min_y, max_x, min_y + L)
+            # Bottom-Left
+            painter.drawLine(min_x, max_y, min_x + L, max_y)
+            painter.drawLine(min_x, max_y, min_x, max_y - L)
+            # Bottom-Right
+            painter.drawLine(max_x, max_y, max_x - L, max_y)
+            painter.drawLine(max_x, max_y, max_x, max_y - L)
+
+            # 2. Draw Skeletal Connections (Translucent)
+            conn_color = QColor(color.red(), color.green(), color.blue(), 100)
+            painter.setPen(QPen(conn_color, 1))
+            painter.setBrush(Qt.BrushStyle.NoBrush)
+            l = lm_list
+            connections = [
+                (0,1),(1,2),(2,3),(3,4), (0,5),(5,6),(6,7),(7,8),
+                (0,17),(17,18),(18,19),(19,20), (5,9),(9,13),(13,17),
+                (9,10),(10,11),(11,12), (13,14),(14,15),(15,16)
+            ]
+            for s, e in connections:
+                p1 = QPointF(rect.x() + l[s].x * rect.width(), rect.y() + l[s].y * rect.height())
+                p2 = QPointF(rect.x() + l[e].x * rect.width(), rect.y() + l[e].y * rect.height())
+                painter.drawLine(p1, p2)
+
+            # 3. Draw Joints (Solid dots)
             painter.setPen(Qt.PenStyle.NoPen)
             painter.setBrush(QBrush(color))
             for pt in lm_list:
                 px = rect.x() + int(pt.x * rect.width())
                 py = rect.y() + int(pt.y * rect.height())
-                painter.drawEllipse(px - 2, py - 2, 4, 4)
+                painter.drawEllipse(px - 3, py - 3, 6, 6)
+
+            # 4. State-Driven Skeletal Highlights & Vectors
+            if label == "Right": # Physical Left Hand (Clutch / Yaw)
+                p4 = QPointF(rect.x() + l[4].x * rect.width(), rect.y() + l[4].y * rect.height())
+                p8 = QPointF(rect.x() + l[8].x * rect.width(), rect.y() + l[8].y * rect.height())
+                
+                # Highlight pinch if clutch engaged
+                if self.clutch_active:
+                    cx, cy = int((p4.x() + p8.x()) / 2), int((p4.y() + p8.y()) / 2)
+                    painter.setPen(QPen(QColor(0, 255, 100), 1, Qt.PenStyle.DashLine))
+                    painter.drawEllipse(cx - 8, cy - 8, 16, 16)
+                    painter.setPen(QPen(QColor(0, 255, 100), 2))
+                    painter.drawLine(p4, p8)
+                
+                # Draw Yaw Wave reference line
+                p20 = QPointF(rect.x() + l[20].x * rect.width(), rect.y() + l[20].y * rect.height())
+                painter.setPen(QPen(QColor(255, 255, 255, 100), 1, Qt.PenStyle.DashLine))
+                painter.drawLine(int(p4.x()), int(p4.y()), int(p20.x()), int(p4.y()))
+                painter.setPen(QPen(color, 2))
+                painter.drawLine(p4, p20)
+                
+            else: # Physical Right Hand (Flight stick: Pitch / Roll)
+                p4 = QPointF(rect.x() + l[4].x * rect.width(), rect.y() + l[4].y * rect.height())
+                p20 = QPointF(rect.x() + l[20].x * rect.width(), rect.y() + l[20].y * rect.height())
+                p0 = QPointF(rect.x() + l[0].x * rect.width(), rect.y() + l[0].y * rect.height())
+                p9 = QPointF(rect.x() + l[9].x * rect.width(), rect.y() + l[9].y * rect.height())
+                
+                # Draw Roll Wave reference line
+                painter.setPen(QPen(QColor(255, 255, 255, 100), 1, Qt.PenStyle.DashLine))
+                painter.drawLine(int(p4.x()), int(p4.y()), int(p20.x()), int(p4.y()))
+                painter.setPen(QPen(color, 2))
+                painter.drawLine(p4, p20)
+                
+                # Draw Pitch vector line
+                painter.setPen(QPen(color, 2))
+                painter.drawLine(p0, p9)
+
+            # 5. Paint Console Status Label Badges
+            painter.setFont(QFont("Consolas", 8, QFont.Weight.Bold))
+            fm = painter.fontMetrics()
             
-            painter.setPen(QPen(color, 1))
-            painter.setBrush(Qt.BrushStyle.NoBrush)
-            l = lm_list
-            conn = [(0,1),(1,2),(2,3),(3,4), (0,5),(5,6),(6,7),(7,8), (0,17),(17,18),(18,19),(19,20), (5,9),(9,13),(13,17), (9,10),(10,11),(11,12), (13,14),(14,15),(15,16)]
-            for s, e in conn:
-                p1 = QPointF(rect.x() + l[s].x * rect.width(), rect.y() + l[s].y * rect.height())
-                p2 = QPointF(rect.x() + l[e].x * rect.width(), rect.y() + l[e].y * rect.height())
-                painter.drawLine(p1, p2)
+            if label == "Right": # Physical Left Hand
+                title = "SYS_L: CLUTCH & HEIGHT"
+                status_text = f"CLUTCH: {'ENGAGED' if self.clutch_active else 'STANDBY'} | THR: {self.targets[2]} | YAW: {self.targets[3]}"
+            else: # Physical Right Hand
+                title = "SYS_R: FLIGHT AXIS"
+                status_text = f"PITCH: {self.targets[1]} | ROLL: {self.targets[0]}"
+                
+            # Title Badge
+            tw_title = fm.horizontalAdvance(title)
+            painter.setPen(Qt.PenStyle.NoPen)
+            painter.setBrush(QBrush(QColor(0, 0, 0, 180)))
+            painter.drawRect(min_x, min_y - 16, tw_title + 10, 15)
+            painter.setPen(color)
+            painter.drawText(min_x + 5, min_y - 4, title)
+            
+            # Status Text Badge
+            tw_status = fm.horizontalAdvance(status_text)
+            painter.setPen(Qt.PenStyle.NoPen)
+            painter.setBrush(QBrush(QColor(0, 0, 0, 180)))
+            painter.drawRect(min_x, max_y + 2, tw_status + 10, 15)
+            painter.setPen(color)
+            painter.drawText(min_x + 5, max_y + 13, status_text)
 
     def _draw_horizon_gauge(self, painter, rect):
         size = 110
