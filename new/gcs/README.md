@@ -151,3 +151,20 @@ Manual pilot controls can be accessed via keyboard overrides or the graphical jo
 | **Yaw CCW / CW** | `Left Arrow` / `Right Arrow` | $\pm 50$ PWM Yaw units |
 | **Throttle Up / Down** | `Up Arrow` / `Down Arrow` | $\pm 50$ PWM Throttle units |
 | **Emergency Disarm** | `Spacebar` | Immediate Disarm Pulse |
+
+## 🎮 Flight Control & Gesture Mapping
+
+For the PyQt6 GCS application (`Raven GCS`), a two-handed decoupled flight model is used:
+
+| Hand / Gesture | Action | Measurement | Output Channel | Range |
+| :--- | :--- | :--- | :--- | :--- |
+| **Left Hand** | Clutch Activation | Pinch distance between Thumb (4) and Index (8) | N/A (software state) | Disengaged / Engaged |
+| **Left Hand** | Throttle Control | Vertical wrist translation (Wrist Y coordinate) | CH3 (Throttle) | 1000 - 2000 PWM |
+| **Left Hand** | Yaw (Heading) | Hand tilt wave (Pinky Y - Thumb Y) | CH4 (Yaw) | 1000 - 2000 PWM |
+| **Right Hand** | Pitch (Forward/Back) | Vertical wrist translation (Wrist Y coordinate) | CH2 (Pitch) | 1000 - 2000 PWM |
+| **Right Hand** | Roll (Left/Right) | Hand tilt wave (Pinky Y - Thumb Y) | CH1 (Roll) | 1000 - 2000 PWM |
+| **Left Hand** | Take Off | Thumbs Up gesture | MSP command | Initiates automated takeoff |
+| **Left Hand** | Land | Thumbs Down gesture | MSP command | Initiates automated landing |
+| **Left Hand** | Safe Stop / Kill | Fist gesture | MSP disarm | Disarms motors instantly |
+
+---
