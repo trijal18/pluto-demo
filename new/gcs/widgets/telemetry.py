@@ -66,31 +66,64 @@ class VUMeter(QWidget):
 class TelemetryRack(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.layout = QHBoxLayout(self)
+        self.layout = QVBoxLayout(self) # Changed to vertical for grouping
         self.layout.setSpacing(10)
         
+        # 1. RC Gauges (Horizontal)
+        self.rc_group = QWidget()
+        self.rc_layout = QHBoxLayout(self.rc_group)
+        self.rc_layout.setContentsMargins(0, 0, 0, 0)
         self.meters = {
             'roll': VUMeter("ROLL", initial_val=1500),
             'pitch': VUMeter("PITCH", initial_val=1500),
             'throttle': VUMeter("THROTTLE", initial_val=1000),
             'yaw': VUMeter("YAW", initial_val=1500)
         }
-        
         for m in self.meters.values():
-            self.layout.addWidget(m)
+            self.rc_layout.addWidget(m)
+        self.layout.addWidget(self.rc_group)
             
-        # Extra Stats Area (Battery, RSSI)
+        # 2. System Stats Area
         self.stats_widget = QWidget()
         self.stats_layout = QVBoxLayout(self.stats_widget)
         
+        # Battery Section
+        self.bat_row = QHBoxLayout()
         self.lbl_bat = QLabel("BAT: 0.00V")
-        self.lbl_rssi = QLabel("RSSI: 0")
+        self.lbl_soc = QLabel("100%")
+        self.lbl_soc.setStyleSheet("color: #0f0; font-family: Consolas; font-size: 14px; font-weight: bold;")
+        self.bat_row.addWidget(self.lbl_bat)
+        self.bat_row.addStretch()
+        self.bat_row.addWidget(self.lbl_soc)
+        self.stats_layout.addLayout(self.bat_row)
         
-        for lbl in [self.lbl_bat, self.lbl_rssi]:
-            lbl.setStyleSheet("color: #0ff; font-family: Consolas; font-size: 14px; font-weight: bold;")
-            self.stats_layout.addWidget(lbl)
+        # Amperage & RSSI Section
+        self.extra_row = QHBoxLayout()
+        self.lbl_amp = QLabel("0 mA")
+        self.lbl_rssi = QLabel("RSSI: 0")
+        self.extra_row.addWidget(self.lbl_amp)
+        self.extra_row.addStretch()
+        self.extra_row.addWidget(self.lbl_rssi)
+        self.stats_layout.addLayout(self.extra_row)
+        
+        # Heartbeat & Link Status
+        self.status_row = QHBoxLayout()
+        self.lbl_heartbeat = QLabel("●") # Heartbeat LED
+        self.lbl_heartbeat.setStyleSheet("color: #555; font-size: 18px;")
+        self.lbl_link = QLabel("LINK: OFFLINE")
+        self.lbl_wd = QLabel("WATCHDOG")
+        self.lbl_wd.setStyleSheet("color: #555; font-family: Consolas; font-size: 11px; font-weight: bold; background: #222; padding: 2px;")
+        self.status_row.addWidget(self.lbl_heartbeat)
+        self.status_row.addWidget(self.lbl_link)
+        self.status_row.addWidget(self.lbl_wd)
+        self.status_row.addStretch()
+        self.stats_layout.addLayout(self.status_row)
+        
+        for lbl in [self.lbl_bat, self.lbl_rssi, self.lbl_amp, self.lbl_link]:
+            lbl.setStyleSheet("color: #0ff; font-family: Consolas; font-size: 11px; font-weight: bold;")
             
         self.layout.addWidget(self.stats_widget)
+        self.heartbeat_state = False
 
     def update_telemetry(self, state):
         # Update RC meters
@@ -100,12 +133,38 @@ class TelemetryRack(QWidget):
         self.meters['throttle'].set_value(rc[2])
         self.meters['yaw'].set_value(rc[3])
         
-        # Update labels
-        self.lbl_bat.setText(f"BAT: {state.get('battery', 0.0):.2f}V")
-        self.lbl_rssi.setText(f"RSSI: {state.get('rssi', 0)}")
+        # Update Power Stats
+        v = state.get('battery', 0.0)
+        soc = state.get('battery_percentage', 0)
+        amp = state.get('amperage', 0)
+        rssi = state.get('rssi', 0)
+        wd = state.get('watchdog_active', False)
         
-        # Color battery label red if low
-        if state.get('battery', 4.0) < 3.4:
-            self.lbl_bat.setStyleSheet("color: #f00; font-family: Consolas; font-size: 14px; font-weight: bold;")
+        self.lbl_bat.setText(f"BAT: {v:.2f}V")
+        self.lbl_soc.setText(f"{soc}%")
+        self.lbl_amp.setText(f"{amp} mA")
+        self.lbl_rssi.setText(f"RSSI: {rssi}")
+        
+        # Watchdog Status
+        if wd:
+            self.lbl_wd.setStyleSheet("color: #fff; font-family: Consolas; font-size: 11px; font-weight: bold; background: #f00; padding: 2px;")
         else:
-            self.lbl_bat.setStyleSheet("color: #0ff; font-family: Consolas; font-size: 14px; font-weight: bold;")
+            self.lbl_wd.setStyleSheet("color: #555; font-family: Consolas; font-size: 11px; font-weight: bold; background: #222; padding: 2px;")
+        
+        # Battery Health Color
+        if v < 3.4 or soc < 20: self.lbl_soc.setStyleSheet("color: #f00; font-family: Consolas; font-size: 14px; font-weight: bold;")
+        elif v < 3.6 or soc < 40: self.lbl_soc.setStyleSheet("color: #ff0; font-family: Consolas; font-size: 14px; font-weight: bold;")
+        else: self.lbl_soc.setStyleSheet("color: #0f0; font-family: Consolas; font-size: 14px; font-weight: bold;")
+
+        # Heartbeat & Telemetry Loss
+        tele_lost = state.get('telemetry_lost', False)
+        if tele_lost:
+            self.lbl_heartbeat.setStyleSheet("color: #f00; font-size: 18px;")
+            self.lbl_link.setText("LINK: DATA LOST")
+            self.lbl_link.setStyleSheet("color: #f00; font-family: Consolas; font-size: 11px; font-weight: bold;")
+        else:
+            self.heartbeat_state = not self.heartbeat_state
+            color = "#0f0" if self.heartbeat_state else "#050"
+            self.lbl_heartbeat.setStyleSheet(f"color: {color}; font-size: 18px;")
+            self.lbl_link.setText("LINK: ACTIVE")
+            self.lbl_link.setStyleSheet("color: #0f0; font-family: Consolas; font-size: 11px; font-weight: bold;")

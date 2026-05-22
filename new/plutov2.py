@@ -67,12 +67,14 @@ class PlutoV2:
             'acc': [0, 0, 0],
             'gyro': [0, 0, 0],
             'mag': [0, 0, 0],
-            'last_update': 0
+            'last_update': 0,
+            'watchdog_active': False
         }
         
         # Watchdog
         self.last_input_time = time.time()
         self.watchdog_timeout = 0.5  # 500ms for safety
+        self.watchdog_active = False
         
         # Telemetry Health
         self.telemetry_lost = False
@@ -245,6 +247,11 @@ class PlutoV2:
                     self.target_rc[1] = 1500
                     self.target_rc[2] = 1500
                     self.target_rc[3] = 1500
+                    self.watchdog_active = True
+                    self.state['watchdog_active'] = True
+                else:
+                    self.watchdog_active = False
+                    self.state['watchdog_active'] = False
                 
                 if now - self.state['last_update'] > self.telemetry_timeout and self.state['last_update'] > 0:
                     if not self.telemetry_lost:

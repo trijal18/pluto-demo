@@ -31,6 +31,10 @@ class OneEuroFilter:
         self.dx_prev = 0.0
         self.t_prev = time.time()
 
+    @property
+    def value(self):
+        return int(self.x_prev)
+
     def _alpha(self, cutoff, dt):
         tau = 1.0 / (2 * math.pi * cutoff)
         return 1.0 / (1.0 + tau / dt)

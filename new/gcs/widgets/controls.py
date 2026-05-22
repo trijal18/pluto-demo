@@ -1,152 +1,143 @@
-from PyQt6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QSlider, QGridLayout, QLabel
+from PyQt6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QGridLayout, QLabel, QSlider
 from PyQt6.QtCore import Qt, pyqtSignal
 
 class ControlDeck(QWidget):
-    # Signals to be connected to DroneWorker
+    # Signals for mission commands
     connect_clicked = pyqtSignal()
     arm_clicked = pyqtSignal()
     disarm_clicked = pyqtSignal()
     takeoff_clicked = pyqtSignal()
     land_clicked = pyqtSignal()
-    calibrate_clicked = pyqtSignal()
-    
+    cal_acc_clicked = pyqtSignal()
+    cal_mag_clicked = pyqtSignal()
     manual_rc_changed = pyqtSignal(int, int, int, int) # R, P, T, Y
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.main_layout = QVBoxLayout(self)
-        self.main_layout.setSpacing(15)
+        self.setFixedWidth(200) # Slightly wider for slider
+        self.layout = QVBoxLayout(self)
+        self.layout.setSpacing(10)
+        self.layout.setContentsMargins(10, 10, 10, 5)
         
-        # 1. Safety & System Section
-        self.safety_group = QVBoxLayout()
-        self.lbl_safety = QLabel("--- SAFETY & SYSTEM ---")
-        self.lbl_safety.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.lbl_safety.setStyleSheet("color: #0ff; font-weight: bold; font-size: 10px;")
+        # 1. Mission Section
+        self.lbl_mission = QLabel("--- MISSION ---")
+        self._set_lbl_style(self.lbl_mission)
         
-        self.btn_connect = self._create_button("CONNECT", "#005500")
-        self.btn_connect.setObjectName("btn_connect")
-        self.btn_arm = self._create_button("ARM", "#880000")
-        self.btn_arm.setObjectName("btn_arm")
+        self.btn_connect = self._create_button("CONNECT", "#004400")
+        self.btn_arm = self._create_button("ARM", "#660000")
+        self.btn_takeoff = self._create_button("TAKEOFF", "#004466")
+        self.btn_land = self._create_button("LAND", "#664400")
         self.btn_disarm = self._create_button("DISARM", "#440000")
-        self.btn_disarm.setObjectName("btn_disarm")
-        self.btn_calib = self._create_button("CALIBRATE", "#333300")
         
-        self.btn_connect.clicked.connect(self.connect_clicked.emit)
-        self.btn_arm.clicked.connect(self.arm_clicked.emit)
-        self.btn_disarm.clicked.connect(self.disarm_clicked.emit)
-        self.btn_calib.clicked.connect(self.calibrate_clicked.emit)
+        for b in [self.btn_connect, self.btn_arm, self.btn_takeoff, self.btn_land]:
+            self.layout.addWidget(b)
         
-        self.safety_group.addWidget(self.lbl_safety)
-        self.safety_group.addWidget(self.btn_connect)
-        self.safety_group.addWidget(self.btn_arm)
-        self.safety_group.addWidget(self.btn_disarm)
-        self.safety_group.addWidget(self.btn_calib)
-        self.main_layout.addLayout(self.safety_group)
+        # 2. Calibration Section (Moved from HUD)
+        self.lbl_cal = QLabel("--- CALIBRATION ---")
+        self._set_lbl_style(self.lbl_cal)
+        self.cal_layout = QHBoxLayout()
+        self.btn_cal_acc = self._create_button("ACC", "#333")
+        self.btn_cal_mag = self._create_button("MAG", "#333")
+        self.cal_layout.addWidget(self.btn_cal_acc)
+        self.cal_layout.addWidget(self.btn_cal_mag)
+        
+        self.layout.addWidget(self.lbl_cal)
+        self.layout.addLayout(self.cal_layout)
 
-        # 2. Flight Commands Section
-        self.flight_group = QVBoxLayout()
-        self.lbl_flight = QLabel("--- FLIGHT COMMANDS ---")
-        self.lbl_flight.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.lbl_flight.setStyleSheet("color: #0ff; font-weight: bold; font-size: 10px;")
+        # 3. Manual Section
+        self.lbl_manual = QLabel("--- MANUAL ---")
+        self._set_lbl_style(self.lbl_manual)
+        self.layout.addWidget(self.lbl_manual)
         
-        self.btn_takeoff = self._create_button("TAKEOFF", "#004488")
-        self.btn_land = self._create_button("LAND", "#884400")
+        self.man_layout = QHBoxLayout()
         
-        self.btn_takeoff.clicked.connect(self.takeoff_clicked.emit)
-        self.btn_land.clicked.connect(self.land_clicked.emit)
-        
-        self.flight_group.addWidget(self.lbl_flight)
-        self.flight_group.addWidget(self.btn_takeoff)
-        self.flight_group.addWidget(self.btn_land)
-        self.main_layout.addLayout(self.flight_group)
-
-        # 3. Manual Override Section
-        self.manual_group = QVBoxLayout()
-        self.lbl_manual = QLabel("--- MANUAL OVERRIDE ---")
-        self.lbl_manual.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.lbl_manual.setStyleSheet("color: #0ff; font-weight: bold; font-size: 10px;")
-        self.manual_group.addWidget(self.lbl_manual)
-        
-        # Jog + Throttle Horizontal
-        self.man_controls = QHBoxLayout()
-        
-        # Jog Grid
+        # Jog Grid (P, R, Y, CTR)
         self.jog_grid = QGridLayout()
-        self.btn_p_up = self._create_button("P+", "#333")
-        self.btn_p_dn = self._create_button("P-", "#333")
-        self.btn_r_lf = self._create_button("R-", "#333")
-        self.btn_r_rt = self._create_button("R+", "#333")
-        self.btn_reset = self._create_button("CTR", "#555")
+        self.jog_grid.setSpacing(5)
         
-        # Smaller font for jog buttons to fit
-        for b in [self.btn_p_up, self.btn_p_dn, self.btn_r_lf, self.btn_r_rt, self.btn_reset]:
-            b.setFixedSize(40, 40)
-            b.setStyleSheet(b.styleSheet() + "font-size: 10px; padding: 0;")
-
+        self.btn_p_up = self._create_jog_btn("P+")
+        self.btn_p_dn = self._create_jog_btn("P-")
+        self.btn_r_lf = self._create_jog_btn("R-")
+        self.btn_r_rt = self._create_jog_btn("R+")
+        self.btn_y_lf = self._create_jog_btn("Y-")
+        self.btn_y_rt = self._create_jog_btn("Y+")
+        self.btn_ctr = self._create_jog_btn("CTR")
+        
         self.jog_grid.addWidget(self.btn_p_up, 0, 1)
         self.jog_grid.addWidget(self.btn_r_lf, 1, 0)
-        self.jog_grid.addWidget(self.btn_reset, 1, 1)
+        self.jog_grid.addWidget(self.btn_ctr, 1, 1)
         self.jog_grid.addWidget(self.btn_r_rt, 1, 2)
         self.jog_grid.addWidget(self.btn_p_dn, 2, 1)
         
-        self.man_controls.addLayout(self.jog_grid)
+        # Yaw Buttons below P/R/CTR cross
+        self.jog_grid.addWidget(self.btn_y_lf, 3, 0)
+        self.jog_grid.addWidget(self.btn_y_rt, 3, 2)
         
-        # Throttle Slider
-        self.sld_throttle = QSlider(Qt.Orientation.Vertical)
-        self.sld_throttle.setRange(1000, 2000)
-        self.sld_throttle.setValue(1000)
-        self.sld_throttle.setMinimumHeight(120)
-        self.sld_throttle.setStyleSheet("""
-            QSlider::groove:vertical { background: #333; width: 6px; }
-            QSlider::handle:vertical { background: #0ff; height: 15px; margin: 0 -5px; }
+        self.man_layout.addLayout(self.jog_grid)
+        
+        # Vertical Throttle Slider
+        self.sld_thr = QSlider(Qt.Orientation.Vertical)
+        self.sld_thr.setRange(1000, 2000)
+        self.sld_thr.setValue(1000)
+        self.sld_thr.setMinimumHeight(150)
+        self.sld_thr.setStyleSheet("""
+            QSlider::groove:vertical { background: #222; width: 8px; border-radius: 4px; }
+            QSlider::handle:vertical { background: #0ff; height: 20px; margin: 0 -6px; border-radius: 2px; }
         """)
-        self.sld_throttle.valueChanged.connect(self._on_manual_change)
-        self.man_controls.addWidget(self.sld_throttle)
+        self.man_layout.addWidget(self.sld_thr)
+        self.layout.addLayout(self.man_layout)
         
-        self.manual_group.addLayout(self.man_controls)
-        self.main_layout.addLayout(self.manual_group)
+        # Connect Signals
+        self.btn_connect.clicked.connect(self.connect_clicked.emit)
+        self.btn_arm.clicked.connect(self.arm_clicked.emit)
+        self.btn_takeoff.clicked.connect(self.takeoff_clicked.emit)
+        self.btn_land.clicked.connect(self.land_clicked.emit)
+        self.btn_disarm.clicked.connect(self.disarm_clicked.emit)
+        self.btn_cal_acc.clicked.connect(self.cal_acc_clicked.emit)
+        self.btn_cal_mag.clicked.connect(self.cal_mag_clicked.emit)
         
         # Jog Logic
-        self.manual_vals = {'roll': 1500, 'pitch': 1500, 'yaw': 1500}
-        self.btn_p_up.clicked.connect(lambda: self._update_jog('pitch', 20))
-        self.btn_p_dn.clicked.connect(lambda: self._update_jog('pitch', -20))
-        self.btn_r_lf.clicked.connect(lambda: self._update_jog('roll', -20))
-        self.btn_r_rt.clicked.connect(lambda: self._update_jog('roll', 20))
-        self.btn_reset.clicked.connect(self._reset_jog)
+        self.vals = {'roll': 1500, 'pitch': 1500, 'yaw': 1500}
+        self.btn_p_up.clicked.connect(lambda: self._upd('pitch', 25))
+        self.btn_p_dn.clicked.connect(lambda: self._upd('pitch', -25))
+        self.btn_r_lf.clicked.connect(lambda: self._upd('roll', -25))
+        self.btn_r_rt.clicked.connect(lambda: self._upd('roll', 25))
+        self.btn_y_lf.clicked.connect(lambda: self._upd('yaw', -50))
+        self.btn_y_rt.clicked.connect(lambda: self._upd('yaw', 50))
+        self.btn_ctr.clicked.connect(self._reset)
+        self.sld_thr.valueChanged.connect(self._on_thr_change)
 
-        self.main_layout.addStretch()
+        self.layout.addStretch()
+        self.layout.addWidget(self.btn_disarm)
+
+    def _set_lbl_style(self, lbl):
+        lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        lbl.setStyleSheet("color: #0ff; font-weight: bold; font-size: 10px; margin-top: 5px;")
 
     def _create_button(self, text, color):
         btn = QPushButton(text)
         btn.setStyleSheet(f"""
-            QPushButton {{
-                background-color: {color};
-                color: white;
-                border: 2px solid #555;
-                border-radius: 4px;
-                padding: 8px;
-                font-family: 'Segoe UI', sans-serif;
-                font-weight: bold;
-            }}
-            QPushButton:pressed {{
-                background-color: #fff;
-                color: black;
-            }}
+            QPushButton {{ background: {color}; color: white; border: 1px solid #555; border-radius: 3px; padding: 8px; font-weight: bold; }}
+            QPushButton:pressed {{ background: white; color: black; }}
         """)
         return btn
 
-    def _update_jog(self, axis, delta):
-        self.manual_vals[axis] = max(1000, min(2000, self.manual_vals[axis] + delta))
-        self._on_manual_change()
+    def _create_jog_btn(self, text):
+        btn = QPushButton(text)
+        btn.setFixedSize(40, 40)
+        btn.setStyleSheet("""
+            QPushButton { background: #111; color: #0ff; border: 1px solid #444; border-radius: 3px; font-size: 10px; font-weight: bold; }
+            QPushButton:pressed { background: #0ff; color: black; }
+        """)
+        return btn
 
-    def _reset_jog(self):
-        self.manual_vals = {'roll': 1500, 'pitch': 1500, 'yaw': 1500}
-        self._on_manual_change()
+    def _on_thr_change(self):
+        self.manual_rc_changed.emit(self.vals['roll'], self.vals['pitch'], self.sld_thr.value(), self.vals['yaw'])
 
-    def _on_manual_change(self):
-        self.manual_rc_changed.emit(
-            self.manual_vals['roll'],
-            self.manual_vals['pitch'],
-            self.sld_throttle.value(),
-            self.manual_vals['yaw']
-        )
+    def _upd(self, axis, delta):
+        self.vals[axis] = max(1000, min(2000, self.vals[axis] + delta))
+        self.manual_rc_changed.emit(self.vals['roll'], self.vals['pitch'], self.sld_thr.value(), self.vals['yaw'])
+
+    def _reset(self):
+        self.vals = {'roll': 1500, 'pitch': 1500, 'yaw': 1500}
+        self.manual_rc_changed.emit(1500, 1500, self.sld_thr.value(), 1500)

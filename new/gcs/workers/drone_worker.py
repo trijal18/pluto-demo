@@ -63,6 +63,18 @@ class DroneWorker(QThread):
         if self.drone.connected:
             self.drone.calibrate_acc()
 
+    def calibrate_mag(self):
+        if self.drone.connected:
+            self.drone.calibrate_mag()
+
+    def save_config(self):
+        if self.drone.connected:
+            self.drone.save_config()
+
+    def flip(self, direction):
+        if self.drone.connected:
+            self.drone.flip(direction)
+
     def stop(self):
         self._run_flag = False
         self.disconnect_drone()
