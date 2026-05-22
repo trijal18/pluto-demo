@@ -7,9 +7,6 @@ from PyQt6.QtGui import QImage, QPixmap, QPainter, QColor, QPen, QFont, QBrush, 
 from PyQt6.QtCore import Qt, QRect, QPointF, QRectF, pyqtSignal
 
 class ViewportWidget(QWidget):
-    cal_acc_clicked = pyqtSignal()
-    cal_mag_clicked = pyqtSignal()
-
     def __init__(self, parent=None):
         super().__init__(parent)
         self.image = None
@@ -30,9 +27,6 @@ class ViewportWidget(QWidget):
         self.targets = [1500, 1500, 1000, 1500] # R, P, T, Y
         
         self.video_rect = QRect(0, 0, 0, 0)
-        self.btn_acc_rect = QRect(0, 0, 0, 0)
-        self.btn_mag_rect = QRect(0, 0, 0, 0)
-        self.setMouseTracking(True)
 
     def update_frame(self, frame):
         self.image = frame
@@ -55,6 +49,7 @@ class ViewportWidget(QWidget):
         self.update()
 
     def update_targets(self, r, p, t, y):
+        """Updates the COMMANDED targets (what we are sending)"""
         self.targets = [r, p, t, y]
         self.update()
 
@@ -106,7 +101,6 @@ class ViewportWidget(QWidget):
             self._draw_altitude_tape(painter, self.video_rect)
             self._draw_compass_ribbon(painter, self.video_rect)
             self._draw_system_badges(painter, self.video_rect)
-            self._draw_hud_buttons(painter, self.video_rect)
             self._draw_target_bars(painter, self.video_rect)
             
             painter.restore()
@@ -190,18 +184,6 @@ class ViewportWidget(QWidget):
         painter.setFont(QFont("Consolas", 10, QFont.Weight.Bold))
         painter.drawText(x+tw+14, y+int(cy+5), f"{self.altitude}cm")
 
-    def _draw_hud_buttons(self, painter, rect):
-        bx, by = rect.x() + 20, rect.y() + rect.height() - 75
-        self.btn_acc_rect = QRect(bx, by, 75, 25)
-        self.btn_mag_rect = QRect(bx, by + 30, 75, 25)
-        
-        painter.setFont(QFont("Consolas", 8, QFont.Weight.Bold))
-        for r, label in [(self.btn_acc_rect, "ACC CAL"), (self.btn_mag_rect, "MAG CAL")]:
-            painter.setBrush(QBrush(QColor(0, 60, 60, 180)))
-            painter.setPen(QPen(QColor(0, 255, 204), 1))
-            painter.drawRect(r)
-            painter.drawText(r, Qt.AlignmentFlag.AlignCenter, label)
-
     def _draw_compass_ribbon(self, painter, rect):
         cx = rect.x() + rect.width() / 2
         rw, rh = 350, 25
@@ -256,19 +238,15 @@ class ViewportWidget(QWidget):
         painter.setFont(QFont("Consolas", 8, QFont.Weight.Bold))
         for i, val in enumerate(self.targets):
             bx = start_x + i * (bw + 15)
+            # Label as "CMD" to indicate Commanded/Sent values
             painter.setPen(QColor(0, 255, 204, 255))
-            painter.drawText(int(bx), int(y - 5), f"T_{labels[i]}")
+            painter.drawText(int(bx), int(y - 5), f"CMD_{labels[i]}")
+            
             painter.setPen(QPen(QColor(0, 255, 204, 120), 1))
             painter.setBrush(QBrush(QColor(20, 20, 20, 180)))
             painter.drawRect(QRectF(bx, y, bw, bh))
+            
             fill_w = int(((val - 1000) / 1000) * bw)
             painter.setPen(Qt.PenStyle.NoPen)
             painter.setBrush(QBrush(QColor(0, 255, 204, 220)))
             painter.fillRect(QRectF(bx, y, fill_w, bh), painter.brush())
-
-    def mousePressEvent(self, event):
-        if self.btn_acc_rect.contains(event.pos()):
-            self.cal_acc_clicked.emit()
-        elif self.btn_mag_rect.contains(event.pos()):
-            self.cal_mag_clicked.emit()
-        super().mousePressEvent(event)

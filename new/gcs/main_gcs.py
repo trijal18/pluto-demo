@@ -52,22 +52,22 @@ class RavenGCS(QMainWindow):
         self.header_layout = QHBoxLayout(self.header)
         
         self.lbl_logo = QLabel("PLUTO GCS v2.4")
-        self.lbl_logo.setStyleSheet("font-weight: bold; color: #0ff; font-size: 14px;")
+        self.lbl_logo.setStyleSheet("font-weight: bold; color: #0ff; font-size: 16px;")
         
         self.lbl_hands = QLabel("HANDS: L-NONE R-NONE")
         self.lbl_clutch = QLabel("CLUTCH: DISENGAGED")
-        self.lbl_mode = QLabel("MODE: STANDBY")
         self.lbl_latency = QLabel("LATENCY: -- ms")
+        self.lbl_mode = QLabel("MODE: STANDBY")
         
-        for lbl in [self.lbl_hands, self.lbl_clutch, self.lbl_mode, self.lbl_latency]:
-            lbl.setStyleSheet("color: #00ffcc; font-size: 11px; margin-left: 20px; font-weight: bold;")
+        for lbl in [self.lbl_hands, self.lbl_clutch, self.lbl_latency, self.lbl_mode]:
+            lbl.setStyleSheet("color: #00ffcc; font-size: 11px; margin-left: 25px; font-weight: bold;")
 
         self.header_layout.addWidget(self.lbl_logo)
         self.header_layout.addStretch()
         self.header_layout.addWidget(self.lbl_hands)
         self.header_layout.addWidget(self.lbl_clutch)
-        self.header_layout.addWidget(self.lbl_mode)
         self.header_layout.addWidget(self.lbl_latency)
+        self.header_layout.addWidget(self.lbl_mode)
         
         self.main_layout.addWidget(self.header)
 
@@ -113,10 +113,9 @@ class RavenGCS(QMainWindow):
         self.controls.disarm_clicked.connect(self.drone_worker.disarm)
         self.controls.takeoff_clicked.connect(self.drone_worker.takeoff)
         self.controls.land_clicked.connect(self.drone_worker.land)
+        self.controls.cal_acc_clicked.connect(self.drone_worker.calibrate)
+        self.controls.cal_mag_clicked.connect(self.drone_worker.calibrate_mag)
         self.controls.manual_rc_changed.connect(self._on_manual_rc)
-        
-        self.viewport.cal_acc_clicked.connect(self.drone_worker.calibrate)
-        self.viewport.cal_mag_clicked.connect(self.drone_worker.calibrate_mag)
 
         self.vision_worker.start()
         self.drone_worker.start()
@@ -132,7 +131,6 @@ class RavenGCS(QMainWindow):
         
         if landmarks and handedness:
             for i, h in enumerate(handedness):
-                # category_name: 'Left' -> Physical Right, 'Right' -> Physical Left
                 if h[0].category_name == "Left": 
                     flight_idx = i
                     r_status = "OK"
