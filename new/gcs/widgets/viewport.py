@@ -178,24 +178,25 @@ class ViewportWidget(QWidget):
                     painter.setPen(QPen(QColor(0, 255, 100), 2))
                     painter.drawLine(p4, p8)
                 
-                # Draw Yaw Wave reference line
-                p20 = QPointF(rect.x() + l[20].x * rect.width(), rect.y() + l[20].y * rect.height())
+                # Draw Yaw Wave reference line (rigid knuckle-to-knuckle)
+                p5 = QPointF(rect.x() + l[5].x * rect.width(), rect.y() + l[5].y * rect.height())
+                p17 = QPointF(rect.x() + l[17].x * rect.width(), rect.y() + l[17].y * rect.height())
                 painter.setPen(QPen(QColor(255, 255, 255, 100), 1, Qt.PenStyle.DashLine))
-                painter.drawLine(int(p4.x()), int(p4.y()), int(p20.x()), int(p4.y()))
+                painter.drawLine(int(p5.x()), int(p5.y()), int(p17.x()), int(p5.y()))
                 painter.setPen(QPen(color, 2))
-                painter.drawLine(p4, p20)
+                painter.drawLine(p5, p17)
                 
             else: # Physical Right Hand (Flight stick: Pitch / Roll)
-                p4 = QPointF(rect.x() + l[4].x * rect.width(), rect.y() + l[4].y * rect.height())
-                p20 = QPointF(rect.x() + l[20].x * rect.width(), rect.y() + l[20].y * rect.height())
+                p5 = QPointF(rect.x() + l[5].x * rect.width(), rect.y() + l[5].y * rect.height())
+                p17 = QPointF(rect.x() + l[17].x * rect.width(), rect.y() + l[17].y * rect.height())
                 p0 = QPointF(rect.x() + l[0].x * rect.width(), rect.y() + l[0].y * rect.height())
                 p9 = QPointF(rect.x() + l[9].x * rect.width(), rect.y() + l[9].y * rect.height())
                 
-                # Draw Roll Wave reference line
+                # Draw Roll Wave reference line (rigid knuckle-to-knuckle)
                 painter.setPen(QPen(QColor(255, 255, 255, 100), 1, Qt.PenStyle.DashLine))
-                painter.drawLine(int(p4.x()), int(p4.y()), int(p20.x()), int(p4.y()))
+                painter.drawLine(int(p5.x()), int(p5.y()), int(p17.x()), int(p5.y()))
                 painter.setPen(QPen(color, 2))
-                painter.drawLine(p4, p20)
+                painter.drawLine(p5, p17)
                 
                 # Draw Pitch vector line
                 painter.setPen(QPen(color, 2))

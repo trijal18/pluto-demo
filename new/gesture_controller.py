@@ -61,7 +61,8 @@ class HandChassis:
         self.is_engaged = True
 
     def _calculate_raw_roll(self, lm):
-        return lm[20].y - lm[4].y
+        # Wave: Pinky MCP Y minus Index MCP Y
+        return lm[17].y - lm[5].y
 
     def get_decoupled_controls(self, flight_hand, clutch_hand):
         if not self.is_engaged or not flight_hand:
@@ -86,9 +87,9 @@ ALPHA = 0.20  # Cinematic Smoothing
 
 # Sensitivities (Higher = faster response to smaller movements)
 SENS_THROTTLE = 1200.0  # Wrist Y movement
-SENS_ROLL     = 2500.0  # Wave slope
+SENS_ROLL     = 4500.0  # Wave slope (IndexMCP-PinkyMCP Y)
 SENS_PITCH    = 3000.0  # Wrist Y translation
-SENS_YAW      = 2500.0  # Wave slope (Left hand)
+SENS_YAW      = 4500.0  # Wave slope (IndexMCP-PinkyMCP Y)
 
 def clamp_rc(val):
     return max(1000, min(2000, int(val)))
@@ -184,8 +185,8 @@ def main():
                         cv2.line(frame, pt1, pt2, color, 1)
 
                     if side == "Left": # Physical Right
-                        # Highlight Super-Triangle (Wrist, Thumb Tip, Pinky Tip)
-                        pts = [0, 4, 20]
+                        # Highlight Rigid Palm-Triangle (Wrist, Index MCP, Pinky MCP)
+                        pts = [0, 5, 17]
                         tri_pts = [ (int(landmarks[p].x * w), int(landmarks[p].y * h)) for p in pts ]
                         for pt in tri_pts: cv2.circle(frame, pt, 8, (0, 255, 255), -1)
                         cv2.line(frame, tri_pts[0], tri_pts[1], (0, 255, 255), 2)

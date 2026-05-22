@@ -11,10 +11,10 @@ CLUTCH_THRESHOLD = 0.05
 # --- RC Sensitivities ---
 # How much hand movement translates to RC units (1000-2000).
 # Larger values = faster response to smaller hand movements.
-# Adjusted for new 2D slope scales.
-SENS_ROLL     = 2500.0  # Wave (Pinky-Thumb Y)
+# Adjusted for rigid knuckle-to-knuckle span.
+SENS_ROLL     = 4500.0  # Wave (IndexMCP-PinkyMCP Y)
 SENS_PITCH    = 3500.0  # Slope (Wrist-MiddleBase Y)
-SENS_YAW      = 2500.0  # Rotation (Thumb-Pinky Z)
+SENS_YAW      = 4500.0  # Rotation (IndexMCP-PinkyMCP Z)
 SENS_THROTTLE = 1200.0  # Decoupled Height (Wrist Y)
 
 # --- Vision Settings ---

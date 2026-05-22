@@ -41,21 +41,21 @@ class HandChassis:
         self.is_engaged = True
 
     def _calculate_raw_pitch(self, lm):
-        # Lean: Center of Thumb/Pinky line vs Wrist Z
-        mid_z = (lm[4].z + lm[20].z) / 2.0
+        # Lean: Center of Index/Pinky MCP line vs Wrist Z
+        mid_z = (lm[5].z + lm[17].z) / 2.0
         return mid_z - lm[0].z
 
     def _calculate_raw_roll(self, lm):
-        # Wave: Pinky Y minus Thumb Y. 
-        # Tilting right (CW) -> Pinky moves down (larger Y), Thumb moves up (smaller Y).
+        # Wave: Pinky MCP Y minus Index MCP Y.
+        # Tilting right (CW) -> Pinky base moves down (larger Y), Index base moves up (smaller Y).
         # result: positive.
-        return lm[20].y - lm[4].y
+        return lm[17].y - lm[5].y
 
     def _calculate_raw_yaw(self, lm):
-        # Screwdriver: Thumb Z minus Pinky Z.
-        # Rotating right (CW) -> Thumb moves away (larger Z), Pinky moves toward (smaller Z).
+        # Screwdriver: Index MCP Z minus Pinky MCP Z.
+        # Rotating right (CW) -> Index base moves away (larger Z), Pinky base moves toward (smaller Z).
         # result: positive.
-        return lm[4].z - lm[20].z
+        return lm[5].z - lm[17].z
 
     def get_controls(self, landmarks):
         """Returns normalized deltas relative to neutral."""
