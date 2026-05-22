@@ -10,6 +10,7 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 from utils.filters import OneEuroFilter
 from utils.gestures import HandChassisStandard
+from utils.gestures_simple import SimpleOneHandController
 import utils.constants as C
 
 from workers.vision_worker import VisionWorker
@@ -30,6 +31,8 @@ class RavenGCS(QMainWindow):
 
         # 1. Logic
         self.chassis = HandChassisStandard(clutch_threshold=C.CLUTCH_THRESHOLD, deadzone=C.DEADZONE)
+        self.simple_chassis = SimpleOneHandController()
+        self.gesture_mode = "CONTINUOUS"
         self.filters = {
             'roll': OneEuroFilter(min_cutoff=C.MC, beta=C.BETA),
             'pitch': OneEuroFilter(min_cutoff=C.MC, beta=C.BETA),
@@ -38,6 +41,7 @@ class RavenGCS(QMainWindow):
         }
         self.last_throttle = 1000
         self.mode = "STANDBY"
+        self.prev_discrete_gesture = ""
         
         # 2. UI - Tactical Header
         self.central_widget = QWidget()
@@ -122,6 +126,7 @@ class RavenGCS(QMainWindow):
         self.controls.cal_acc_clicked.connect(self.drone_worker.calibrate)
         self.controls.cal_mag_clicked.connect(self.drone_worker.calibrate_mag)
         self.controls.manual_rc_changed.connect(self._on_manual_rc)
+        self.controls.gesture_mode_changed.connect(self._on_gesture_mode_changed)
 
         self.vision_worker.start()
         self.drone_worker.start()
@@ -147,6 +152,68 @@ class RavenGCS(QMainWindow):
         self.lbl_hands.setStyleSheet(f"color: {'#0f0' if (l_status=='OK' or r_status=='OK') else '#777'}; font-size: 11px; font-weight: bold;")
         
         if self.mode == "MANUAL": return
+
+        if self.gesture_mode == "DISCRETE":
+            self.viewport.set_clutch(False)
+            self.lbl_clutch.setText("CLUTCH: N/A")
+            self.lbl_clutch.setStyleSheet("color: #555; font-size: 11px; font-weight: bold;")
+            
+            if landmarks and handedness:
+                # Use the first detected hand
+                hand_lm = landmarks[0]
+                hand_label = handedness[0][0].category_name  # "Left" or "Right"
+                
+                # Update status for hands
+                if hand_label == "Left":
+                    r_status = "OK"
+                else:
+                    l_status = "OK"
+                self.lbl_hands.setText(f"HANDS: L-{l_status} R-{r_status}")
+                self.lbl_hands.setStyleSheet(f"color: #0f0; font-size: 11px; font-weight: bold;")
+                
+                command, rc_vals = self.simple_chassis.get_controls(hand_lm, hand_label)
+                self.viewport.set_detected_gesture(command)
+                
+                # Extract target RC values
+                target_r, target_p, target_t, target_y = rc_vals
+                
+                # Check for rising edge transitions
+                if command == "ARM_TAKEOFF" and self.prev_discrete_gesture != "ARM_TAKEOFF":
+                    self.drone_worker.takeoff()
+                elif command == "DISARM" and self.prev_discrete_gesture != "DISARM":
+                    self.drone_worker.disarm()
+                else:
+                    # Apply 1 Euro filter for smooth transmission
+                    filtered_r = self.filters['roll'].apply(clamp_rc(target_r))
+                    filtered_p = self.filters['pitch'].apply(clamp_rc(target_p))
+                    filtered_t = self.filters['throttle'].apply(clamp_rc(target_t))
+                    filtered_y = self.filters['yaw'].apply(clamp_rc(target_y))
+                    
+                    self.drone_worker.set_rc(roll=filtered_r, pitch=filtered_p, throttle=filtered_t, yaw=filtered_y)
+                    self.last_throttle = filtered_t
+                    self.viewport.update_targets(filtered_r, filtered_p, filtered_t, filtered_y)
+                
+                self.prev_discrete_gesture = command
+                self.mode = "GESTURE"
+            else:
+                self.viewport.set_detected_gesture("")
+                self.prev_discrete_gesture = ""
+                # Default to neutral hover
+                filtered_r = self.filters['roll'].apply(1500)
+                filtered_p = self.filters['pitch'].apply(1500)
+                filtered_t = self.filters['throttle'].apply(self.last_throttle)
+                filtered_y = self.filters['yaw'].apply(1500)
+                
+                self.drone_worker.set_rc(roll=filtered_r, pitch=filtered_p, throttle=filtered_t, yaw=filtered_y)
+                self.viewport.update_targets(filtered_r, filtered_p, filtered_t, filtered_y)
+                
+                self.lbl_hands.setText("HANDS: L-NONE R-NONE")
+                self.lbl_hands.setStyleSheet("color: #777; font-size: 11px; font-weight: bold;")
+                if self.mode == "GESTURE":
+                    self.mode = "STANDBY"
+            
+            self.lbl_mode.setText(f"MODE: {self.mode}")
+            return
 
         clutch_active = False
         if clutch_idx != -1:
@@ -182,6 +249,18 @@ class RavenGCS(QMainWindow):
                 self.viewport.update_targets(1500, 1500, self.last_throttle, 1500)
         
         self.lbl_mode.setText(f"MODE: {self.mode}")
+
+    def _on_gesture_mode_changed(self, mode_str):
+        if "Discrete" in mode_str:
+            self.gesture_mode = "DISCRETE"
+        else:
+            self.gesture_mode = "CONTINUOUS"
+        self.viewport.set_gesture_mode(self.gesture_mode)
+        self.viewport.set_detected_gesture("")
+        self.prev_discrete_gesture = ""
+        # Reset RC targets to hover/neutral values for safety
+        self.drone_worker.set_rc(roll=1500, pitch=1500, throttle=self.last_throttle, yaw=1500)
+        self.viewport.update_targets(1500, 1500, self.last_throttle, 1500)
 
     def _update_header(self, state):
         last_upd = state.get('last_update', 0)

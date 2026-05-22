@@ -1,4 +1,4 @@
-from PyQt6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QGridLayout, QLabel, QSlider
+from PyQt6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QGridLayout, QLabel, QSlider, QComboBox
 from PyQt6.QtCore import Qt, pyqtSignal
 
 class ControlDeck(QWidget):
@@ -11,6 +11,7 @@ class ControlDeck(QWidget):
     cal_acc_clicked = pyqtSignal()
     cal_mag_clicked = pyqtSignal()
     manual_rc_changed = pyqtSignal(int, int, int, int) # R, P, T, Y
+    gesture_mode_changed = pyqtSignal(str)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -31,6 +32,20 @@ class ControlDeck(QWidget):
         
         for b in [self.btn_connect, self.btn_arm, self.btn_takeoff, self.btn_land]:
             self.layout.addWidget(b)
+            
+        # GESTURE MODE Section
+        self.lbl_gesture_mode = QLabel("--- GESTURE MODE ---")
+        self._set_lbl_style(self.lbl_gesture_mode)
+        self.cmb_gesture_mode = QComboBox()
+        self.cmb_gesture_mode.addItems(["Continuous (2-Hand)", "Discrete (1-Hand)"])
+        self.cmb_gesture_mode.setStyleSheet("""
+            QComboBox { background: #111; color: #0ff; border: 1px solid #444; border-radius: 3px; padding: 5px; font-weight: bold; }
+            QComboBox QAbstractItemView { background: #111; color: #0ff; selection-background-color: #0ff; selection-color: black; }
+        """)
+        self.cmb_gesture_mode.currentTextChanged.connect(self.gesture_mode_changed.emit)
+        
+        self.layout.addWidget(self.lbl_gesture_mode)
+        self.layout.addWidget(self.cmb_gesture_mode)
         
         # 2. Calibration Section (Moved from HUD)
         self.lbl_cal = QLabel("--- CALIBRATION ---")

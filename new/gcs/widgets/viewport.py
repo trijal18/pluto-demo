@@ -27,9 +27,19 @@ class ViewportWidget(QWidget):
         self.rssi = 0
         self.watchdog = False
         self.targets = [1500, 1500, 1000, 1500]
+        self.detected_gesture = ""
+        self.gesture_mode = "CONTINUOUS"
         
         self.video_rect = QRect(0, 0, 640, 480)
         self.setMouseTracking(True)
+
+    def set_detected_gesture(self, gesture):
+        self.detected_gesture = gesture
+        self.update()
+
+    def set_gesture_mode(self, mode):
+        self.gesture_mode = mode
+        self.update()
 
     def sizeHint(self):
         # Helps the layout shrink to the video frame
@@ -101,14 +111,50 @@ class ViewportWidget(QWidget):
             self._draw_system_badges(painter, self.video_rect)
             self._draw_target_bars(painter, self.video_rect)
             
+            if self.gesture_mode == "DISCRETE":
+                self._draw_gesture_badge(painter, self.video_rect)
+            
             painter.restore()
+
+    def _draw_gesture_badge(self, painter, rect):
+        if not self.detected_gesture:
+            return
+            
+        painter.save()
+        painter.setFont(QFont("Consolas", 12, QFont.Weight.Bold))
+        fm = painter.fontMetrics()
+        
+        text = f"GESTURE: {self.detected_gesture}"
+        tw = fm.horizontalAdvance(text)
+        th = fm.height()
+        
+        # Center horizontally, below compass ribbon
+        cx = rect.x() + rect.width() / 2
+        bx = cx - tw / 2 - 10
+        by = rect.y() + 55
+        
+        # Draw background capsule
+        painter.setPen(Qt.PenStyle.NoPen)
+        badge_color = QColor(255, 120, 0, 180) # Amber
+        painter.setBrush(QBrush(QColor(10, 10, 10, 220)))
+        painter.drawRoundedRect(QRectF(bx, by, tw + 20, th + 8), 4, 4)
+        
+        # Border
+        painter.setPen(QPen(badge_color, 1.5))
+        painter.drawRoundedRect(QRectF(bx, by, tw + 20, th + 8), 4, 4)
+        
+        # Text
+        painter.drawText(int(bx + 10), int(by + th - 2), text)
+        painter.restore()
 
     def _draw_landmarks(self, painter, rect):
         for i, (lm_list, hand) in enumerate(zip(self.landmarks, self.handedness)):
             label = hand[0].category_name # "Left" (Physical Right) or "Right" (Physical Left)
             
             # Determine color theme based on hand state
-            if label == "Right": # Physical Left Hand (Clutch / Throttle / Yaw)
+            if self.gesture_mode == "DISCRETE":
+                color = QColor(255, 120, 0)
+            elif label == "Right": # Physical Left Hand (Clutch / Throttle / Yaw)
                 color = QColor(0, 255, 100) if self.clutch_active else QColor(255, 170, 0)
             else: # Physical Right Hand (Flight: Pitch / Roll)
                 color = QColor(0, 255, 255) if self.clutch_active else QColor(0, 180, 200, 150)
@@ -166,7 +212,9 @@ class ViewportWidget(QWidget):
                 painter.drawEllipse(px - 3, py - 3, 6, 6)
 
             # 4. State-Driven Skeletal Highlights & Vectors
-            if label == "Right": # Physical Left Hand (Clutch / Yaw)
+            if self.gesture_mode == "DISCRETE":
+                pass
+            elif label == "Right": # Physical Left Hand (Clutch / Yaw)
                 p4 = QPointF(rect.x() + l[4].x * rect.width(), rect.y() + l[4].y * rect.height())
                 p8 = QPointF(rect.x() + l[8].x * rect.width(), rect.y() + l[8].y * rect.height())
                 
@@ -205,7 +253,10 @@ class ViewportWidget(QWidget):
             painter.setFont(QFont("Consolas", 8, QFont.Weight.Bold))
             fm = painter.fontMetrics()
             
-            if label == "Right": # Physical Left Hand
+            if self.gesture_mode == "DISCRETE":
+                title = "SYS: ONE-HAND DISCRETE"
+                status_text = f"GESTURE: {self.detected_gesture} | R:{self.targets[0]} P:{self.targets[1]} T:{self.targets[2]} Y:{self.targets[3]}"
+            elif label == "Right": # Physical Left Hand
                 title = "SYS_L: CLUTCH & HEIGHT"
                 status_text = f"CLUTCH: {'ENGAGED' if self.clutch_active else 'STANDBY'} | THR: {self.targets[2]} | YAW: {self.targets[3]}"
             else: # Physical Right Hand
