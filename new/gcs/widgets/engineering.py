@@ -47,7 +47,7 @@ class EngineeringConsole(QWidget):
         self.rc_layout = QHBoxLayout(self.rc_group)
         self.rc_layout.setSpacing(4)
         self.rc_bars = []
-        labels = ["ROL", "PIT", "THR", "YAW", "AX1", "AX2", "AX3", "AX4"]
+        labels = ["ROL", "PIT", "YAW", "THR", "AX1", "AX2", "AX3", "AX4"]
         for lbl in labels:
             bar = PrecisionBar(lbl)
             self.rc_bars.append(bar)

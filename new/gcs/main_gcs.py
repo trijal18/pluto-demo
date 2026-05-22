@@ -50,9 +50,10 @@ class RavenGCS(QMainWindow):
         self.header.setFixedHeight(40)
         self.header.setStyleSheet("background: #0a0a0a; border-bottom: 1px solid #333;")
         self.header_layout = QHBoxLayout(self.header)
+        self.header_layout.setContentsMargins(20, 0, 20, 0)
         
         self.lbl_logo = QLabel("PLUTO GCS v2.4")
-        self.lbl_logo.setStyleSheet("font-weight: bold; color: #0ff; font-size: 16px;")
+        self.lbl_logo.setStyleSheet("font-weight: bold; color: #0ff; font-size: 15px;")
         
         self.lbl_hands = QLabel("HANDS: L-NONE R-NONE")
         self.lbl_clutch = QLabel("CLUTCH: DISENGAGED")
@@ -60,13 +61,16 @@ class RavenGCS(QMainWindow):
         self.lbl_mode = QLabel("MODE: STANDBY")
         
         for lbl in [self.lbl_hands, self.lbl_clutch, self.lbl_latency, self.lbl_mode]:
-            lbl.setStyleSheet("color: #00ffcc; font-size: 11px; margin-left: 25px; font-weight: bold;")
+            lbl.setStyleSheet("color: #00ffcc; font-size: 11px; font-weight: bold;")
 
         self.header_layout.addWidget(self.lbl_logo)
-        self.header_layout.addStretch()
+        self.header_layout.addStretch(1)
         self.header_layout.addWidget(self.lbl_hands)
+        self.header_layout.addSpacing(40)
         self.header_layout.addWidget(self.lbl_clutch)
+        self.header_layout.addStretch(1)
         self.header_layout.addWidget(self.lbl_latency)
+        self.header_layout.addSpacing(40)
         self.header_layout.addWidget(self.lbl_mode)
         
         self.main_layout.addWidget(self.header)
@@ -74,21 +78,23 @@ class RavenGCS(QMainWindow):
         # 3. UI - Body (Viewport + Sidebar)
         self.body_splitter = QSplitter(Qt.Orientation.Vertical)
         
-        self.top_section = QWidget()
-        self.top_layout = QHBoxLayout(self.top_section)
-        self.top_layout.setContentsMargins(0, 0, 0, 0)
-        self.top_layout.setSpacing(0)
+        self.top_container = QWidget()
+        self.top_h_layout = QHBoxLayout(self.top_container)
+        self.top_h_layout.setContentsMargins(0, 0, 0, 0)
+        self.top_h_layout.setSpacing(0)
         
         self.viewport = ViewportWidget()
         self.controls = ControlDeck()
         
-        self.top_layout.addWidget(self.viewport, 1)
-        self.top_layout.addWidget(self.controls)
+        # Add viewport first with stretch=1 to fill the left side
+        self.top_h_layout.addWidget(self.viewport, 1)
+        # Add controls with stretch=0 to keep it pinned to the right of the video
+        self.top_h_layout.addWidget(self.controls, 0)
         
         # 4. UI - Engineering Pit
         self.engineering = EngineeringConsole()
         
-        self.body_splitter.addWidget(self.top_section)
+        self.body_splitter.addWidget(self.top_container)
         self.body_splitter.addWidget(self.engineering)
         self.body_splitter.setStretchFactor(0, 3) # 75%
         self.body_splitter.setStretchFactor(1, 1) # 25%
@@ -123,7 +129,6 @@ class RavenGCS(QMainWindow):
     def _on_landmarks_received(self, landmarks, handedness):
         self.viewport.update_landmarks(landmarks, handedness)
         
-        # Update Header Hand Status
         l_status = "NONE"
         r_status = "NONE"
         flight_idx = -1
@@ -139,11 +144,10 @@ class RavenGCS(QMainWindow):
                     l_status = "OK"
         
         self.lbl_hands.setText(f"HANDS: L-{l_status} R-{r_status}")
-        self.lbl_hands.setStyleSheet(f"color: {'#0f0' if (l_status=='OK' or r_status=='OK') else '#f00'}; font-size: 11px; margin-left: 20px; font-weight: bold;")
+        self.lbl_hands.setStyleSheet(f"color: {'#0f0' if (l_status=='OK' or r_status=='OK') else '#777'}; font-size: 11px; font-weight: bold;")
         
         if self.mode == "MANUAL": return
 
-        # Gesture Logic
         clutch_active = False
         if clutch_idx != -1:
             clutch_active = self.chassis.get_clutch_state([landmarks[clutch_idx]], [[handedness[clutch_idx][0]]])
@@ -152,7 +156,7 @@ class RavenGCS(QMainWindow):
 
         self.viewport.set_clutch(clutch_active)
         self.lbl_clutch.setText(f"CLUTCH: {'ENGAGED' if clutch_active else 'DISENGAGED'}")
-        self.lbl_clutch.setStyleSheet(f"color: {'#0f0' if clutch_active else '#555'}; font-size: 11px; margin-left: 20px; font-weight: bold;")
+        self.lbl_clutch.setStyleSheet(f"color: {'#0f0' if clutch_active else '#555'}; font-size: 11px; font-weight: bold;")
 
         if flight_idx != -1 and clutch_active and clutch_idx != -1:
             self.mode = "GESTURE"
@@ -184,8 +188,8 @@ class RavenGCS(QMainWindow):
         if last_upd > 0:
             lat = int((time.time() - last_upd) * 1000)
             self.lbl_latency.setText(f"LATENCY: {lat} ms")
-            if lat > 200: self.lbl_latency.setStyleSheet("color: #f00; font-size: 11px; margin-left: 20px; font-weight: bold;")
-            else: self.lbl_latency.setStyleSheet("color: #0f0; font-size: 11px; margin-left: 20px; font-weight: bold;")
+            if lat > 200: self.lbl_latency.setStyleSheet("color: #f00; font-size: 11px; font-weight: bold;")
+            else: self.lbl_latency.setStyleSheet("color: #0f0; font-size: 11px; font-weight: bold;")
 
     def _on_manual_rc(self, r, p, t, y):
         self.mode = "MANUAL"

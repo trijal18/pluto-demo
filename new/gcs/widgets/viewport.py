@@ -7,6 +7,9 @@ from PyQt6.QtGui import QImage, QPixmap, QPainter, QColor, QPen, QFont, QBrush, 
 from PyQt6.QtCore import Qt, QRect, QPointF, QRectF, pyqtSignal
 
 class ViewportWidget(QWidget):
+    cal_acc_clicked = pyqtSignal()
+    cal_mag_clicked = pyqtSignal()
+
     def __init__(self, parent=None):
         super().__init__(parent)
         self.image = None
@@ -15,7 +18,6 @@ class ViewportWidget(QWidget):
         self.mode = "DISCONNECTED"
         self.clutch_active = False
         
-        # HUD State
         self.roll = 0.0
         self.pitch = 0.0
         self.yaw = 0.0
@@ -24,9 +26,14 @@ class ViewportWidget(QWidget):
         self.soc = 0
         self.rssi = 0
         self.watchdog = False
-        self.targets = [1500, 1500, 1000, 1500] # R, P, T, Y
+        self.targets = [1500, 1500, 1000, 1500]
         
-        self.video_rect = QRect(0, 0, 0, 0)
+        self.video_rect = QRect(0, 0, 640, 480)
+        self.setMouseTracking(True)
+
+    def sizeHint(self):
+        # Helps the layout shrink to the video frame
+        return QRect(0, 0, 640, 480).size()
 
     def update_frame(self, frame):
         self.image = frame
@@ -49,7 +56,6 @@ class ViewportWidget(QWidget):
         self.update()
 
     def update_targets(self, r, p, t, y):
-        """Updates the COMMANDED targets (what we are sending)"""
         self.targets = [r, p, t, y]
         self.update()
 
@@ -64,11 +70,8 @@ class ViewportWidget(QWidget):
     def paintEvent(self, event):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-
-        # 1. Background
         painter.fillRect(self.rect(), QColor(5, 5, 5))
 
-        # 2. Video Frame
         if self.image is not None:
             h, w, ch = self.image.shape
             bytes_per_line = ch * w
@@ -81,22 +84,17 @@ class ViewportWidget(QWidget):
             
             painter.drawPixmap(x_off, y_off, scaled_pixmap)
             
-            # Watchdog Pulse
-            if self.watchdog:
-                glow = int(abs(math.sin(time.time() * 5)) * 180)
-                painter.setPen(QPen(QColor(255, 0, 0, glow), 6))
-                painter.setBrush(Qt.BrushStyle.NoBrush)
-                painter.drawRect(self.video_rect.adjusted(3, 3, -3, -3))
-
-            # HUD Layer
             painter.save()
             painter.setClipRect(self.video_rect)
             
-            # Draw Hand Skeleton
             if self.landmarks and self.handedness:
                 self._draw_landmarks(painter, self.video_rect)
 
-            # Draw HUD Instruments
+            if self.watchdog:
+                glow = int(abs(math.sin(time.time() * 5)) * 180)
+                painter.setPen(QPen(QColor(255, 0, 0, glow), 6))
+                painter.drawRect(self.video_rect.adjusted(3, 3, -3, -3))
+
             self._draw_horizon_gauge(painter, self.video_rect)
             self._draw_altitude_tape(painter, self.video_rect)
             self._draw_compass_ribbon(painter, self.video_rect)
@@ -107,9 +105,8 @@ class ViewportWidget(QWidget):
 
     def _draw_landmarks(self, painter, rect):
         for i, (lm_list, hand) in enumerate(zip(self.landmarks, self.handedness)):
-            label = hand[0].category_name # 'Left' or 'Right'
+            label = hand[0].category_name
             color = QColor(0, 255, 255, 200) if label == "Left" else QColor(0, 255, 100, 200)
-            
             painter.setPen(Qt.PenStyle.NoPen)
             painter.setBrush(QBrush(color))
             for pt in lm_list:
@@ -117,7 +114,6 @@ class ViewportWidget(QWidget):
                 py = rect.y() + int(pt.y * rect.height())
                 painter.drawEllipse(px - 2, py - 2, 4, 4)
             
-            # Skeleton
             painter.setPen(QPen(color, 1))
             painter.setBrush(Qt.BrushStyle.NoBrush)
             l = lm_list
@@ -154,7 +150,8 @@ class ViewportWidget(QWidget):
 
     def _draw_altitude_tape(self, painter, rect):
         tw, th = 55, 220
-        x, y = rect.x() + 20, rect.y() + 150
+        # Alignment: Directly below Horizon gauge
+        x, y = rect.x() + 20, rect.y() + 140
         
         painter.save()
         painter.setBrush(Qt.BrushStyle.NoBrush)
@@ -181,6 +178,7 @@ class ViewportWidget(QWidget):
         painter.setBrush(QBrush(Qt.GlobalColor.yellow))
         arrow = QPolygonF([QPointF(x+tw, y+cy), QPointF(x+tw+10, y+cy-6), QPointF(x+tw+10, y+cy+6)])
         painter.drawPolygon(arrow)
+        painter.setPen(QColor(255, 255, 0))
         painter.setFont(QFont("Consolas", 10, QFont.Weight.Bold))
         painter.drawText(x+tw+14, y+int(cy+5), f"{self.altitude}cm")
 
@@ -189,7 +187,6 @@ class ViewportWidget(QWidget):
         rw, rh = 350, 25
         ry = rect.y() + 15
         r_rect = QRectF(cx - rw/2, ry, rw, rh)
-        
         painter.setBrush(QBrush(QColor(0, 0, 0, 100)))
         painter.setPen(QPen(QColor(0, 255, 204, 120), 1))
         painter.drawRect(r_rect)
@@ -213,7 +210,6 @@ class ViewportWidget(QWidget):
                 painter.setPen(QColor(0, 255, 204, 80))
                 painter.drawLine(QPointF(xx, ry), QPointF(xx, ry + 8))
         painter.restore()
-        
         painter.setPen(QPen(Qt.GlobalColor.red, 2))
         painter.drawLine(QPointF(cx, ry - 3), QPointF(cx, ry + rh + 3))
 
@@ -234,18 +230,14 @@ class ViewportWidget(QWidget):
         total_w = len(labels) * (bw + 15)
         start_x = rect.x() + (rect.width() - total_w) / 2
         y = rect.y() + rect.height() - 30
-        
         painter.setFont(QFont("Consolas", 8, QFont.Weight.Bold))
         for i, val in enumerate(self.targets):
             bx = start_x + i * (bw + 15)
-            # Label as "CMD" to indicate Commanded/Sent values
             painter.setPen(QColor(0, 255, 204, 255))
             painter.drawText(int(bx), int(y - 5), f"CMD_{labels[i]}")
-            
             painter.setPen(QPen(QColor(0, 255, 204, 120), 1))
             painter.setBrush(QBrush(QColor(20, 20, 20, 180)))
             painter.drawRect(QRectF(bx, y, bw, bh))
-            
             fill_w = int(((val - 1000) / 1000) * bw)
             painter.setPen(Qt.PenStyle.NoPen)
             painter.setBrush(QBrush(QColor(0, 255, 204, 220)))
